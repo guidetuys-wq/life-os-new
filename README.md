@@ -20,3 +20,4 @@ life-os/
 │   └── db.js               <-- Your js/db.js (cleaned up)
 └── context/
     └── AuthContext.js      <-- Manages user login state globally
+    
