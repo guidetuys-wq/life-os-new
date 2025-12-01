@@ -44,12 +44,15 @@ export default function Sidebar({ user, logout }) {
                     <NavItem href="/projects" icon="splitscreen" label="Projects" />
                     <NavItem href="/goals" icon="flag" label="Goals" />
                     <NavItem href="/notes" icon="psychology" label="Second Brain" />
+                    <NavItem href="/second-brain-chat" icon="chat" label="Second Brain Chat" />
                     <NavItem href="/library" icon="local_library" label="Library" />
                     <NavItem href="/finance" icon="account_balance_wallet" label="Finance" />
+                    /second-brain-chat
                 </div>
             </div>
             
             <div className="p-4 border-t border-white/5">
+                <NavItem href="/settings" icon="settings" label="Settings" />
                 <button onClick={logout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all group">
                      <span className="material-symbols-rounded text-xl group-hover:rotate-90 transition-transform">power_settings_new</span>
                      <span className="text-xs font-bold uppercase tracking-wider">Log Out</span>

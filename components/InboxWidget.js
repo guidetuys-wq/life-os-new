@@ -6,6 +6,7 @@ import { addItem } from '@/lib/db';
 import { addXP, XP_VALUES } from '@/lib/gamification';
 import { useAuth } from '@/context/AuthContext';
 import toast from 'react-hot-toast';
+import { refineTask } from '@/lib/ai';
 
 export default function InboxWidget() {
     const { user } = useAuth();
@@ -87,6 +88,19 @@ export default function InboxWidget() {
         const nextMap = { 'normal': 'high', 'high': 'low', 'low': 'normal' };
         const next = nextMap[task.priority || 'normal'];
         await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'tasks', task.id), { priority: next });
+    };
+
+    const handleRefine = async (task) => {
+        // Optimistic UI (tampilkan loading)
+        toast.loading(`Meningkatkan Task: "${task.text}"...`);
+
+        const refinedText = await refineTask(task.text);
+
+        // Update Firestore
+        await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'tasks', task.id), { text: refinedText });
+
+        toast.dismiss();
+        toast.success("Task ditingkatkan! ✨");
     };
 
     return (
@@ -200,6 +214,14 @@ export default function InboxWidget() {
                                 title="Hapus Task"
                             >
                                 <span className="material-symbols-rounded text-sm">delete</span>
+                            </button>
+
+                            <button 
+                                onClick={() => handleRefine(t)}
+                                className="p-1.5 text-slate-500 hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-all"
+                                title="Perbaiki Task dengan AI"
+                            >
+                                <span className="material-symbols-rounded text-sm">auto_fix</span>
                             </button>
                         </div>
                     </div>
