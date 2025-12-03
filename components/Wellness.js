@@ -1,49 +1,26 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
-import { db, appId } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
-import { addXP } from '@/lib/gamification';
-import { getLocalDate } from '@/lib/utils';
+import { WellnessService } from '@/services/wellnessService';
 
 export default function Wellness() {
     const { user } = useAuth();
     const [data, setData] = useState({ water: 0, mood: null });
 
+    // 1. Fetch Data Realtime via Service
     useEffect(() => {
         if (!user) return;
-        const today = getLocalDate(); // [FIX] Gunakan local date
-        const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'wellness', today);
-        
-        const unsub = onSnapshot(ref, (snap) => {
-            if (snap.exists()) setData(snap.data());
-            else setData({ water: 0, mood: null });
-        });
+        const unsub = WellnessService.subscribeWellness(user.uid, setData);
         return () => unsub();
     }, [user]);
 
-    const updateWellness = async (newData) => {
-        const today = getLocalDate();
-        const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'wellness', today);
-        await setDoc(ref, newData, { merge: true });
+    // 2. Actions (Delegasi ke Service)
+    const handleAddWater = () => {
+        WellnessService.addWater(user.uid, data.water || 0);
     };
 
-    const addWater = async () => {
-        const current = data.water || 0;
-        if (current >= 8) return; // [FIX] Stop jika sudah penuh
-
-        const newCount = current + 1;
-        await updateWellness({ water: newCount });
-        
-        // [FIX] Cek kondisi spesifik agar XP hanya cair sekali
-        if(newCount === 8) {
-            await addXP(user.uid, 5, 'WELLNESS_GOAL', 'Target Minum Tercapai');
-            // Opsional: Tambah efek suara/confetti di sini
-        }
-    };
-
-    const setMood = async (m) => {
-        await updateWellness({ mood: m });
+    const handleSetMood = (mood) => {
+        WellnessService.setMood(user.uid, mood);
     };
 
     return (
@@ -53,9 +30,20 @@ export default function Wellness() {
                 <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-2 flex justify-between">
                     Hidrasi <span className="text-blue-400">{data.water || 0}/8</span>
                 </h3>
-                <div className="flex gap-1 h-8 cursor-pointer" onClick={addWater} title="Tap untuk minum">
+                <div 
+                    className="flex gap-1 h-8 cursor-pointer group" 
+                    onClick={handleAddWater} 
+                    title="Tap untuk minum"
+                >
                     {[...Array(8)].map((_, i) => (
-                        <div key={i} className={`flex-1 rounded-sm transition-all ${i < (data.water || 0) ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 'bg-slate-800 hover:bg-blue-500/30'}`}></div>
+                        <div 
+                            key={i} 
+                            className={`flex-1 rounded-sm transition-all duration-300 ${
+                                i < (data.water || 0) 
+                                ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]' 
+                                : 'bg-slate-800 group-hover:bg-blue-500/20'
+                            }`}
+                        ></div>
                     ))}
                 </div>
             </div>
@@ -67,8 +55,14 @@ export default function Wellness() {
                     const isSelected = data.mood === m;
                     return (
                         <button 
-                            key={m} onClick={() => setMood(m)}
-                            className={`text-xl transition-all hover:scale-125 ${isSelected ? 'scale-125 opacity-100 grayscale-0' : 'opacity-40 grayscale'}`}
+                            key={m} 
+                            onClick={() => handleSetMood(m)}
+                            className={`text-xl transition-all duration-300 hover:scale-125 ${
+                                isSelected 
+                                ? 'scale-125 opacity-100 grayscale-0 filter-none' 
+                                : 'opacity-40 grayscale hover:opacity-100 hover:grayscale-0'
+                            }`}
+                            title={m}
                         >
                             {emojis[m]}
                         </button>

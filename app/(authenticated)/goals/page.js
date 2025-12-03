@@ -1,108 +1,74 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, where, serverTimestamp } from 'firebase/firestore';
-import { db, appId } from '@/lib/firebase';
-import { addItem } from '@/lib/db';
+import { GoalService } from '@/services/goalService';
 import toast from 'react-hot-toast';
 
-// Import Komponen UI Premium
+// Import UI Premium
 import Input from '@/components/ui/Input';
 import Select from '@/components/ui/Select';
 
 export default function GoalsPage() {
     const { user } = useAuth();
+    
+    // Data States
     const [goals, setGoals] = useState([]);
-    const [localProgress, setLocalProgress] = useState({});
+    const [localProgress, setLocalProgress] = useState({}); // State lokal untuk slider
     const [showModal, setShowModal] = useState(false);
     
-    // State Form
+    // Form State
     const [formData, setFormData] = useState({ 
         title: '', 
         area: 'Career', 
-        deadline: '',
-        progress: 0 
+        deadline: ''
     });
 
-    // UPDATE 1: Filter Query
+    // 1. Fetch Data
     useEffect(() => {
         if (!user) return;
-        const q = query(
-            collection(db, 'artifacts', appId, 'users', user.uid, 'goals'), 
-            where('deleted', '!=', true), // <--- Filter
-            orderBy('createdAt', 'desc')
-        );
-        const unsub = onSnapshot(q, (snap) => {
-            setGoals(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
+        const unsub = GoalService.subscribeGoals(user.uid, setGoals);
         return () => unsub();
     }, [user]);
 
-    // [UPDATE] Handler Slider: Hanya update UI lokal
+    // 2. Actions
+    const handleSave = async (e) => {
+        e.preventDefault();
+        if (!formData.title.trim()) return toast.error("Judul target wajib diisi!");
+
+        try {
+            await GoalService.addGoal(user.uid, formData);
+            setFormData({ title: '', area: 'Career', deadline: '' });
+            setShowModal(false);
+            toast.success("Target baru ditetapkan!", { icon: '🎯' });
+        } catch (error) {
+            toast.error("Gagal menyimpan target.");
+        }
+    };
+
+    const handleDelete = (id) => {
+        if(confirm('Pindahkan target ini ke sampah?')) {
+            GoalService.deleteGoal(user.uid, id);
+        }
+    };
+
+    // 3. Logic Slider Hemat Biaya
+    // Saat digeser: Hanya update state lokal (UI instan, 0 biaya DB)
     const handleSliderChange = (id, val) => {
         setLocalProgress(prev => ({ ...prev, [id]: val }));
     };
 
-    // [BARU] Handler Simpan: Update DB saat slider dilepas
+    // Saat dilepas: Baru kirim ke Firestore (1x write)
     const handleSliderCommit = async (id, val) => {
         try {
-            await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'goals', id), { 
-                progress: parseInt(val) 
-            });
-            // Hapus state lokal setelah sukses simpan agar kembali sinkron dengan DB
+            await GoalService.updateGoal(user.uid, id, { progress: parseInt(val) });
+            // Hapus state lokal agar kembali sinkron dengan data realtime DB
             setLocalProgress(prev => {
                 const newState = { ...prev };
                 delete newState[id];
                 return newState;
             });
-        } catch (e) { toast.error("Gagal update progress"); }
-    };
-
-    // 2. Tambah Goal Baru
-    const handleSave = async (e) => {
-        e.preventDefault();
-        if (!formData.title.trim()) {
-            toast.error("Judul target wajib diisi!");
-            return;
-        }
-
-        try {
-            await addItem(user.uid, 'goals', {
-                ...formData,
-                progress: 0,
-                deleted: false // <--- [WAJIB DITAMBAHKAN] Agar lolos filter query
-            });
-            
-            setFormData({ title: '', area: 'Career', deadline: '', progress: 0 });
-            setShowModal(false);
-            toast.success("Target baru ditetapkan!", { icon: '🎯' });
-        } catch (error) {
-            console.error(error); // Cek console jika masih error
-            toast.error("Gagal menyimpan target.");
-        }
-    };
-
-    // 3. Update Progress (Slider)
-    const updateProgress = async (id, val) => {
-        // Optimistic UI update (opsional, tapi firestore onSnapshot sudah cukup cepat)
-        try {
-            await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'goals', id), { progress: parseInt(val) });
         } catch (e) {
             toast.error("Gagal update progress");
-        }
-    };
-
-    // UPDATE 2: Soft Delete
-    const handleDelete = async (id) => {
-        if(confirm('Pindahkan target ini ke sampah?')) {
-            try {
-                // updateDoc menggantikan deleteDoc
-                await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'goals', id), {
-                    deleted: true,
-                    deletedAt: serverTimestamp()
-                });
-                toast.success('Target dipindahkan ke sampah');
-            } catch (e) { toast.error("Gagal menghapus"); }
         }
     };
 
@@ -120,7 +86,6 @@ export default function GoalsPage() {
         return { text: `${diff} Hari Lagi`, color: 'text-blue-300' };
     };
 
-    // Helper: Style Berdasarkan Area
     const getAreaStyle = (area) => {
         switch(area) {
             case 'Finance': return 'from-emerald-900/40 to-slate-900 border-emerald-500/30 hover:border-emerald-500/50';
@@ -135,7 +100,7 @@ export default function GoalsPage() {
     return (
         <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 animate-enter">
             
-            {/* Header Page */}
+            {/* Header */}
             <div className="flex justify-between items-end mb-8">
                 <div>
                     <h1 className="text-2xl font-bold text-white mb-1">Life Goals</h1>
@@ -154,6 +119,7 @@ export default function GoalsPage() {
                 {goals.map(g => {
                     const timeLeft = getDaysLeft(g.deadline);
                     const gradientClass = getAreaStyle(g.area);
+                    // Gunakan nilai lokal jika sedang digeser, atau nilai DB jika diam
                     const currentProgress = localProgress[g.id] !== undefined ? localProgress[g.id] : g.progress;
                     
                     return (
@@ -185,20 +151,18 @@ export default function GoalsPage() {
                             <div>
                                 <div className="flex justify-between text-xs font-bold mb-2">
                                     <span className="text-slate-400 uppercase tracking-widest text-[10px]">Progress</span>
-                                    <span className={g.progress >= 100 ? 'text-emerald-400' : 'text-white'}>{g.progress}%</span>
+                                    <span className={g.progress >= 100 ? 'text-emerald-400' : 'text-white'}>{currentProgress}%</span>
                                 </div>
-                                <div className="relative h-2 w-full bg-slate-950/50 rounded-full overflow-hidden border border-white/5">
+                                <div className="relative h-2 w-full bg-slate-950/50 rounded-full overflow-hidden border border-white/5 group-hover:h-4 transition-all">
                                     <div 
                                         className={`absolute top-0 left-0 h-full rounded-full transition-all duration-100 ${currentProgress >= 100 ? 'bg-emerald-500' : 'bg-blue-500'}`} 
-                                        style={{ width: `${currentProgress}%` }} // Gunakan currentProgress
+                                        style={{ width: `${currentProgress}%` }} 
                                     ></div>
                                     
                                     <input 
                                         type="range" min="0" max="100" 
                                         value={currentProgress || 0} 
-                                        // 1. Update UI instan (murah)
                                         onChange={(e) => handleSliderChange(g.id, e.target.value)}
-                                        // 2. Update DB hanya saat dilepas (hemat)
                                         onMouseUp={(e) => handleSliderCommit(g.id, e.target.value)}
                                         onTouchEnd={(e) => handleSliderCommit(g.id, e.target.value)}
                                         className="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer z-10"
@@ -235,7 +199,7 @@ export default function GoalsPage() {
                                 placeholder="Cth: Tabungan 100 Juta..." 
                                 value={formData.title} 
                                 onChange={e => setFormData({...formData, title: e.target.value})}
-                                className="font-bold text-lg"
+                                autoFocus
                             />
                             
                             <div className="grid grid-cols-2 gap-4">

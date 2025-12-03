@@ -1,8 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { db, appId } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
+import { FinanceService } from '@/services/financeService'; // Gunakan service
 import toast from 'react-hot-toast';
 
 export default function CategoryManager({ onClose }) {
@@ -11,13 +10,10 @@ export default function CategoryManager({ onClose }) {
     const [newCat, setNewCat] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
-    // Fetch Categories
+    // Fetch Categories via Service
     useEffect(() => {
         if (!user) return;
-        const q = query(collection(db, 'artifacts', appId, 'users', user.uid, 'categories'), orderBy('name', 'asc'));
-        const unsub = onSnapshot(q, (snap) => {
-            setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
+        const unsub = FinanceService.subscribeCategories(user.uid, setCategories);
         return () => unsub();
     }, [user]);
 
@@ -27,17 +23,12 @@ export default function CategoryManager({ onClose }) {
         
         setIsLoading(true);
         try {
-            // Cek duplikat sederhana di client (opsional)
+            // Cek duplikat client-side
             if (categories.some(c => c.name.toLowerCase() === newCat.trim().toLowerCase())) {
                 throw new Error("Kategori sudah ada!");
             }
-
-            await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'categories'), {
-                name: newCat.trim(),
-                createdAt: serverTimestamp()
-            });
+            await FinanceService.addCategory(user.uid, newCat);
             setNewCat('');
-            toast.success('Kategori ditambahkan');
         } catch (error) {
             toast.error(error.message);
         }
@@ -47,8 +38,7 @@ export default function CategoryManager({ onClose }) {
     const handleDelete = async (id) => {
         if (confirm('Hapus kategori ini?')) {
             try {
-                await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'categories', id));
-                toast.success('Kategori dihapus');
+                await FinanceService.deleteCategory(user.uid, id);
             } catch (error) {
                 toast.error('Gagal menghapus');
             }
@@ -97,7 +87,7 @@ export default function CategoryManager({ onClose }) {
                         value={newCat} 
                         onChange={(e) => setNewCat(e.target.value)}
                         placeholder="Kategori baru..." 
-                        className="input-enhanced w-full bg-slate-900/50 text-sm py-2.5"
+                        className="input-glass w-full py-2.5 text-sm"
                     />
                     <button 
                         type="submit" 

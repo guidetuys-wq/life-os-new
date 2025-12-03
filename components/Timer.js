@@ -1,121 +1,107 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { db, appId } from '@/lib/firebase';
+import { useState } from 'react'; // Hapus useEffect yang tidak perlu
 import { useAuth } from '@/context/AuthContext';
-import { addXP, XP_VALUES } from '@/lib/gamification'; // Import Engine kita
+import { TaskService } from '@/services/taskService';
+import { addXP, XP_VALUES } from '@/lib/gamification'; 
+import { useFocusTimer } from '@/hooks/useFocusTimer';
+import toast from 'react-hot-toast';
 
-export default function Timer() {
+// [PERUBAHAN 1] Terima props 'tasks' dari Dashboard
+export default function Timer({ tasks = [] }) {
     const { user } = useAuth();
-    const [timeLeft, setTimeLeft] = useState(25 * 60);
-    const [isRunning, setIsRunning] = useState(false);
-    
-    // State baru untuk integrasi Task
-    const [activeTasks, setActiveTasks] = useState([]);
+    // const [tasks, setTasks] = useState([]); <--- HAPUS STATE LOKAL INI
     const [selectedTaskId, setSelectedTaskId] = useState('');
 
-    // [FIX] Load state dari LocalStorage saat mount
-    useEffect(() => {
-        const savedEndTime = localStorage.getItem('timerTarget');
-        if (savedEndTime) {
-            const left = Math.ceil((parseInt(savedEndTime) - Date.now()) / 1000);
-            if (left > 0) {
-                setTimeLeft(left);
-                setIsRunning(true);
-            } else {
-                localStorage.removeItem('timerTarget'); // Timer sudah habis saat offline
-            }
-        }
-    }, []);
+    // [PERUBAHAN 2] HAPUS USEEFFECT INI
+    // Karena data tasks sudah datang dari props "tasks"
+    /* useEffect(() => {
+        if (!user) return;
+        const unsubscribe = TaskService.subscribeToActiveTasks(...)
+        return () => unsubscribe && unsubscribe();
+    }, [user]); 
+    */
 
-    // [FIX] Update Timer & LocalStorage
-    useEffect(() => {
-        let interval = null;
-        if (isRunning && timeLeft > 0) {
-            // Set target time di localStorage jika belum ada
-            if (!localStorage.getItem('timerTarget')) {
-                const target = Date.now() + (timeLeft * 1000);
-                localStorage.setItem('timerTarget', target.toString());
-            }
-
-            interval = setInterval(() => {
-                setTimeLeft((p) => {
-                    const next = p - 1;
-                    // Sinkronisasi sesekali bisa ditambahkan, tapi ini cukup
-                    return next;
-                });
-            }, 1000);
-        } else if (timeLeft <= 0 && isRunning) {
-            handleFinish(); // Timer selesai
-        } else if (!isRunning) {
-            // Jika dipause manual, hapus target
-            localStorage.removeItem('timerTarget');
-        }
-        return () => clearInterval(interval);
-    }, [isRunning, timeLeft]);
-
-    const handleFinish = async () => {
-        localStorage.removeItem('timerTarget');
-        setIsRunning(false);
-        setTimeLeft(25 * 60);
+    const onTimerFinish = async () => {
+        // [FIX] Ambil nama task dari props 'tasks'
+        const taskName = tasks.find(t => t.id === selectedTaskId)?.text || "Fokus Bebas";
         
-        // INTERKONEKSI: Beri XP & Log
-        const taskName = activeTasks.find(t => t.id === selectedTaskId)?.text || "Fokus Bebas";
-        await addXP(user.uid, XP_VALUES.TIMER_SESSION, 'FOCUS_DONE', `Selesai Fokus: ${taskName}`);
+        await addXP(user.uid, XP_VALUES.TIMER_SESSION, 'FOCUS_DONE', `Sesi Fokus: ${taskName}`);
         
-        // INTERKONEKSI: Tanya user apakah task selesai?
-        if (selectedTaskId && confirm(`Sesi selesai! Apakah task "${taskName}" juga sudah tuntas?`)) {
-             await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'tasks', selectedTaskId), { completed: true });
-             await addXP(user.uid, XP_VALUES.TASK_COMPLETE, 'TASK_COMPLETED', `Task Tuntas: ${taskName}`);
-             // Hapus dari dropdown
-             setActiveTasks(prev => prev.filter(t => t.id !== selectedTaskId));
-             setSelectedTaskId('');
-        }
+        toast((t) => (
+            <div className="flex flex-col gap-2">
+                <span className="font-bold">Sesi Selesai! 🎉</span>
+                <p className="text-xs">Apakah task "{taskName}" sudah tuntas?</p>
+                <div className="flex gap-2 mt-2">
+                    <button 
+                        onClick={async () => {
+                            toast.dismiss(t.id);
+                            if (selectedTaskId) {
+                                await TaskService.completeTask(user.uid, selectedTaskId, taskName);
+                                setSelectedTaskId('');
+                            }
+                        }}
+                        className="bg-green-600 text-white px-3 py-1 rounded text-xs"
+                    >
+                        Ya, Tuntas!
+                    </button>
+                    <button 
+                        onClick={() => toast.dismiss(t.id)}
+                        className="bg-slate-700 text-white px-3 py-1 rounded text-xs"
+                    >
+                        Belum, Lanjut
+                    </button>
+                </div>
+            </div>
+        ), { duration: 8000, icon: '⏰' });
+        
+        resetTimer();
     };
 
-    const toggleTimer = () => {
-        if(!isRunning && !selectedTaskId) {
-            // Paksa user pilih task (Produktivitas naik!)
-            if(!confirm("Anda belum memilih Task. Mulai timer tanpa target spesifik?")) return;
-        }
-        setIsRunning(!isRunning);
-    };
+    const { isRunning, toggleTimer, formattedTime, resetTimer } = useFocusTimer(onTimerFinish);
 
-    const formatTime = (seconds) => {
-        const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-        const s = (seconds % 60).toString().padStart(2, '0');
-        return `${m}:${s}`;
+    const handleStart = () => {
+        if (!isRunning && !selectedTaskId) {
+            toast("💡 Tips: Pilih task agar XP lebih besar!", { icon: '🎯' });
+        }
+        toggleTimer();
     };
 
     return (
-        <div className="card-enhanced !p-4 flex flex-col gap-4 bg-slate-900/50 border-blue-500/30 w-full max-w-md mx-auto mb-6">
+        <div className={`card-enhanced !p-4 flex flex-col gap-4 transition-all duration-500 w-full max-w-md mx-auto mb-6 border ${isRunning ? 'border-amber-500/50 bg-slate-900/80 shadow-[0_0_30px_rgba(245,158,11,0.2)]' : 'border-blue-500/30 bg-slate-900/50'}`}>
             <div className="flex justify-between items-center">
-                {/* Dropdown Integrasi Task */}
+                {/* Dropdown menggunakan props 'tasks' */}
                 <select 
-                    className="bg-slate-800 text-white text-xs rounded-lg p-2 border border-slate-700 max-w-[200px]"
+                    className="bg-slate-800 text-white text-xs rounded-lg p-2 border border-slate-700 max-w-[200px] outline-none focus:border-blue-500"
                     value={selectedTaskId}
                     onChange={(e) => setSelectedTaskId(e.target.value)}
                     disabled={isRunning}
                 >
-                    <option value="">-- Pilih Target Fokus --</option>
-                    {activeTasks.map(t => (
+                    <option value="">-- Fokus Bebas --</option>
+                    {tasks.map(t => (
                         <option key={t.id} value={t.id}>{t.text}</option>
                     ))}
                 </select>
-                <div className="text-[10px] text-blue-400 font-bold uppercase tracking-wider animate-pulse">
-                    {isRunning ? 'Focus Mode ON' : 'Ready'}
-                </div>
+                
+                {isRunning && (
+                    <div className="flex items-center gap-2">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                        </span>
+                        <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Focus Mode</span>
+                    </div>
+                )}
             </div>
 
             <div className="flex items-center justify-between">
-                <div className="text-4xl font-mono font-bold text-white tracking-tighter">
-                    {formatTime(timeLeft)}
+                <div className={`text-5xl font-mono font-bold tracking-tighter transition-colors ${isRunning ? 'text-amber-400' : 'text-white'}`}>
+                    {formattedTime()}
                 </div>
                 <button 
-                    onClick={toggleTimer} 
-                    className={`h-12 w-12 rounded-xl flex items-center justify-center shadow-lg active:scale-95 transition-all ${isRunning ? 'bg-amber-500' : 'bg-blue-600'}`}
+                    onClick={handleStart} 
+                    className={`h-14 w-14 rounded-2xl flex items-center justify-center shadow-lg active:scale-95 transition-all ${isRunning ? 'bg-amber-500 hover:bg-amber-600' : 'bg-blue-600 hover:bg-blue-500'}`}
                 >
-                    <span className="material-symbols-rounded text-2xl text-white">
+                    <span className="material-symbols-rounded text-3xl text-white filled-icon">
                         {isRunning ? 'pause' : 'play_arrow'}
                     </span>
                 </button>

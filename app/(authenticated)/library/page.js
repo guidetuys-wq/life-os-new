@@ -1,9 +1,8 @@
 'use client';
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, serverTimestamp } from 'firebase/firestore';
-import { db, appId } from '@/lib/firebase';
-import { addItem } from '@/lib/db';
+import { LibraryService } from '@/services/libraryService'; // [NEW]
+import { GoalService } from '@/services/goalService';       // [NEW] Reuse Goal Service
 import toast from 'react-hot-toast';
 
 // Import UI Premium
@@ -27,36 +26,36 @@ export default function LibraryPage() {
         title: '', 
         type: 'book', 
         status: 'queue',
-        goalId: '', // Link ke Goal
+        goalId: '', 
         rating: 0,
         review: ''
     });
 
-    // 1. Fetch Data (Library & Goals)
+    // 1. Fetch Data (Centralized)
     useEffect(() => {
         if (!user) return;
         
-        // Listen Library Items
-        const unsubLib = onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'library'), orderBy('createdAt', 'desc')), 
-            (snap) => setItems(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-        );
+        // Subscribe Library
+        const unsubLibrary = LibraryService.subscribeLibrary(user.uid, setItems);
 
-        // Fetch Goals (Untuk dropdown link)
-        const fetchGoals = async () => {
-            const snap = await getDocs(query(collection(db, 'artifacts', appId, 'users', user.uid, 'goals')));
-            setGoals(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        };
-        fetchGoals();
+        // Subscribe Goals (untuk Dropdown Link)
+        // Pastikan GoalService.subscribeGoals tersedia
+        let unsubGoals = () => {};
+        if (GoalService && typeof GoalService.subscribeGoals === 'function') {
+             unsubGoals = GoalService.subscribeGoals(user.uid, setGoals);
+        }
 
-        return () => unsubLib();
+        return () => { unsubLibrary(); unsubGoals(); };
     }, [user]);
 
     // 2. Logic Filter & Search
-    const filteredItems = items.filter(item => {
-        const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesType = filterType === 'All' || item.type === filterType;
-        return matchesSearch && matchesType;
-    });
+    const filteredItems = useMemo(() => {
+        return items.filter(item => {
+            const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase());
+            const matchesType = filterType === 'All' || item.type === filterType;
+            return matchesSearch && matchesType;
+        });
+    }, [items, searchQuery, filterType]);
 
     // 3. Actions
     const handleSave = async (e) => {
@@ -64,37 +63,30 @@ export default function LibraryPage() {
         if (!formData.title.trim()) { toast.error("Judul wajib diisi"); return; }
 
         try {
-            await addItem(user.uid, 'library', {
-                ...formData,
-                rating: parseInt(formData.rating),
-                createdAt: serverTimestamp()
-            });
-            
+            await LibraryService.addItem(user.uid, formData);
+            // Reset Form
             setFormData({ title: '', type: 'book', status: 'queue', goalId: '', rating: 0, review: '' });
             setShowModal(false);
-            toast.success("Item ditambahkan ke Library!", { icon: '📚' });
         } catch (error) {
             toast.error("Gagal menyimpan.");
         }
     };
 
-    const handleDelete = async (id) => {
+    const handleDelete = (id) => {
         if(confirm('Hapus item ini dari library?')) {
-            await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'library', id));
-            toast.success('Dihapus');
+            LibraryService.deleteItem(user.uid, id);
         }
     };
 
-    const updateStatus = async (item, newStatus) => {
-        await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'library', item.id), { status: newStatus });
-        toast.success(`Status: ${newStatus.toUpperCase()}`);
+    const updateStatus = (item, newStatus) => {
+        LibraryService.updateStatus(user.uid, item.id, newStatus);
     };
 
-    const updateRating = async (item, newRating) => {
-        await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'library', item.id), { rating: newRating });
+    const updateRating = (item, newRating) => {
+        LibraryService.updateItem(user.uid, item.id, { rating: newRating });
     };
 
-    // Helper: Tipe & Ikon
+    // Helper: UI Configs
     const getTypeInfo = (type) => {
         const map = {
             book: { icon: 'menu_book', color: 'text-blue-400 bg-blue-400/10 border-blue-400/20', label: 'Buku' },
@@ -105,19 +97,18 @@ export default function LibraryPage() {
         return map[type] || map.book;
     };
 
-    // Helper: Status Badge
     const getStatusBadge = (status) => {
         switch(status) {
-            case 'active': return { class: 'bg-blue-500 text-white animate-pulse', label: 'Sedang Dibaca/Tonton' };
+            case 'active': return { class: 'bg-blue-500 text-white animate-pulse', label: 'Sedang Proses' };
             case 'done': return { class: 'bg-emerald-500 text-white', label: 'Selesai' };
-            default: return { class: 'bg-slate-700 text-slate-400', label: 'Antrean (Queue)' };
+            default: return { class: 'bg-slate-700 text-slate-400', label: 'Antrean' };
         }
     };
 
     return (
         <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 animate-enter">
             
-            {/* HEADER AREA */}
+            {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-white mb-1">Library</h1>
@@ -145,7 +136,7 @@ export default function LibraryPage() {
                 </div>
             </div>
 
-            {/* FILTER BAR (Tabs) */}
+            {/* Filter Tabs */}
             <div className="flex gap-2 overflow-x-auto pb-4 mb-2 no-scrollbar">
                 {['All', 'book', 'course', 'movie', 'article'].map(type => (
                     <button
@@ -162,7 +153,7 @@ export default function LibraryPage() {
                 ))}
             </div>
 
-            {/* GRID ITEMS */}
+            {/* Grid Items */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
                 {filteredItems.map(item => {
                     const info = getTypeInfo(item.type);
@@ -172,7 +163,7 @@ export default function LibraryPage() {
                     return (
                         <div key={item.id} className="card-enhanced p-5 flex flex-col justify-between group h-full">
                             
-                            {/* Top: Type & Actions */}
+                            {/* Top Info */}
                             <div className="flex justify-between items-start mb-3">
                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${info.color}`}>
                                     <span className="material-symbols-rounded text-sm">{info.icon}</span> {info.label}
@@ -197,9 +188,9 @@ export default function LibraryPage() {
                                 )}
                             </div>
 
-                            {/* Bottom: Status & Rating */}
+                            {/* Actions */}
                             <div className="space-y-3 pt-3 border-t border-slate-700/30">
-                                {/* Status Selector */}
+                                {/* Status Control */}
                                 <div className="flex items-center justify-between">
                                     <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${statusInfo.class}`}>
                                         {statusInfo.label}
@@ -216,7 +207,7 @@ export default function LibraryPage() {
                                     </select>
                                 </div>
 
-                                {/* Star Rating (Only if done or active) */}
+                                {/* Rating (Interactive) */}
                                 {(item.status === 'done' || item.rating > 0) && (
                                     <div className="flex items-center justify-center gap-1 bg-slate-900/50 py-1.5 rounded-lg border border-slate-800">
                                         {[1, 2, 3, 4, 5].map((star) => (
@@ -244,7 +235,7 @@ export default function LibraryPage() {
                 </div>
             )}
 
-            {/* MODAL ADD ITEM */}
+            {/* MODAL */}
             {showModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-enter">
                     <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg p-6 relative shadow-2xl">
@@ -300,7 +291,7 @@ export default function LibraryPage() {
                                 ))}
                             </Select>
 
-                            {/* Rating Input (Opsional saat tambah) */}
+                            {/* Rating Input */}
                             {formData.status === 'done' && (
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">Rating</label>
@@ -311,7 +302,7 @@ export default function LibraryPage() {
                                                 onClick={() => setFormData({...formData, rating: star})}
                                                 className={`text-2xl transition-transform hover:scale-110 ${star <= formData.rating ? 'text-amber-400' : 'text-slate-700'}`}
                                             >
-                                                ★
+                                                ⭐
                                             </button>
                                         ))}
                                     </div>

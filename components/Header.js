@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { addItem } from '@/lib/db';
+import { TaskService } from '@/services/taskService'; // [FIX] Gunakan Service
 import { getGreeting } from '@/lib/utils';
 import toast from 'react-hot-toast';
 
@@ -10,30 +10,30 @@ export default function Header() {
     
     // State Variables
     const [time, setTime] = useState('');
-    const [greeting, setGreeting] = useState('Halo'); // State greeting (anti-blink)
+    const [greeting, setGreeting] = useState('Halo');
     const [weather, setWeather] = useState({ temp: '--', icon: '🌤️' });
     const [quickTask, setQuickTask] = useState('');
 
-    // 1. Live Clock Logic (Client-Side Only)
+    // 1. Live Clock & Greeting Logic (Digabung agar efisien)
     useEffect(() => {
-        // Fungsi update waktu
-        const updateClock = () => {
-            setTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+        const updateClockAndGreeting = () => {
+            const now = new Date();
+            // Update Jam
+            setTime(now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+            
+            // Update Greeting (jika user ada)
+            if (user?.displayName) {
+                const name = user.displayName.split(' ')[0];
+                setGreeting(getGreeting(name)); // Greeting akan update otomatis (Pagi -> Siang)
+            }
         };
 
-        updateClock(); // Set awal
-        const timer = setInterval(updateClock, 1000); // Update tiap detik
+        updateClockAndGreeting(); // Set awal
+        const timer = setInterval(updateClockAndGreeting, 1000); // Update tiap detik
         return () => clearInterval(timer);
-    }, []);
-
-    // 2. Greeting Logic (Client-Side Only)
-    useEffect(() => {
-        if (user?.displayName) {
-            setGreeting(getGreeting(user.displayName.split(' ')[0]));
-        }
     }, [user]);
 
-    // 3. Weather Logic
+    // 2. Weather Logic (Tetap Client-Side Fetch)
     useEffect(() => {
         if (!navigator.geolocation) return;
         navigator.geolocation.getCurrentPosition(async (pos) => {
@@ -55,19 +55,17 @@ export default function Header() {
         return "🌡️";
     };
 
-    // 4. Quick Capture Logic
+    // 3. Quick Capture Logic (via TaskService)
     const handleQuickCapture = async (e) => {
         if (e.key === 'Enter' && quickTask.trim()) {
             try {
-                await addItem(user.uid, 'tasks', { text: quickTask, completed: false });
+                // [FIX] Gunakan Service: Lebih bersih & dapat XP otomatis
+                await TaskService.addTask(user.uid, quickTask);
                 setQuickTask('');
                 
-                toast.success('Task berhasil disimpan!', {
+                toast.success('Task disimpan ke Inbox', { 
                     icon: '🚀',
-                    style: {
-                        background: 'rgba(15, 23, 42, 0.9)',
-                        border: '1px solid rgba(59, 130, 246, 0.3)',
-                    }
+                    style: { background: 'rgba(15, 23, 42, 0.9)', border: '1px solid rgba(59, 130, 246, 0.3)' }
                 });
             } catch (error) {
                 toast.error('Gagal menyimpan task.');

@@ -51,7 +51,9 @@ export default function Sidebar({ user, logout }) {
             </div>
             
             <div className="p-4 border-t border-white/5">
+            
                 <NavItem href="/settings" icon="settings" label="Settings" />
+                <NavItem href="/trash" icon="delete" label="Trash" />  
                 <button onClick={logout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all group">
                      <span className="material-symbols-rounded text-xl group-hover:rotate-90 transition-transform">power_settings_new</span>
                      <span className="text-xs font-bold uppercase tracking-wider">Log Out</span>
