@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { collection, query, orderBy, onSnapshot, doc, deleteDoc, updateDoc, getDocs, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, deleteDoc, updateDoc, getDocs, serverTimestamp, where } from 'firebase/firestore';
 import { db, appId } from '@/lib/firebase';
 import { addItem } from '@/lib/db';
 import toast from 'react-hot-toast';
@@ -38,10 +38,17 @@ export default function NotesPage() {
     useEffect(() => {
         if (!user) return;
         
-        // Listen Notes
-        const unsubNotes = onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'notes'), orderBy('createdAt', 'desc')), 
-            (snap) => setNotes(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+        // Listen Notes (DENGAN FILTER SOFT DELETE)
+        const q = query(
+            collection(db, 'artifacts', appId, 'users', user.uid, 'notes'), 
+            where('deleted', '!=', true), // <--- 2. TAMBAHKAN LINE INI
+            orderBy('createdAt', 'desc')
         );
+
+        const unsubNotes = onSnapshot(q, (snap) => {
+            // Mapping data seperti biasa
+            setNotes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        });
 
         // Fetch Projects (Untuk dropdown link)
         const fetchProjects = async () => {
@@ -129,9 +136,18 @@ export default function NotesPage() {
     };
 
     const handleDelete = async (id) => {
-        if(confirm('Hapus catatan ini?')) {
-            await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'notes', id));
-            toast.success('Dihapus');
+        if(!confirm('Pindahkan ke sampah?')) return;
+        
+        try {
+            const noteRef = doc(db, 'artifacts', appId, 'users', user.uid, 'notes', id);
+            // Soft Delete: Hanya menandai, tidak menghapus data
+            await updateDoc(noteRef, { 
+                deleted: true, 
+                deletedAt: serverTimestamp() 
+            });
+            toast.success('Dipindahkan ke sampah');
+        } catch (e) {
+            toast.error("Gagal menghapus");
         }
     };
 

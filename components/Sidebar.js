@@ -47,7 +47,6 @@ export default function Sidebar({ user, logout }) {
                     <NavItem href="/second-brain-chat" icon="chat" label="Second Brain Chat" />
                     <NavItem href="/library" icon="local_library" label="Library" />
                     <NavItem href="/finance" icon="account_balance_wallet" label="Finance" />
-                    /second-brain-chat
                 </div>
             </div>
             

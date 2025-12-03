@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 
 export default function LoginPage() {
     const [email, setEmail] = useState('');
@@ -12,11 +13,22 @@ export default function LoginPage() {
 
     const handleLogin = async (e) => {
         e.preventDefault();
+        // [TAMBAH] Loading toast
+        const toastId = toast.loading('Memproses...');
+        
         try {
             await login(email, password);
-            router.push('/dashboard'); // Go to dashboard on success
+            toast.dismiss(toastId);
+            toast.success("Login Berhasil!");
+            router.push('/dashboard'); 
         } catch (error) {
-            alert("Login Failed: " + error.message);
+            toast.dismiss(toastId);
+            // [FIX] Ganti alert dengan toast error
+            let msg = "Login Gagal.";
+            if(error.code === 'auth/invalid-credential') msg = "Email atau password salah.";
+            if(error.code === 'auth/too-many-requests') msg = "Terlalu banyak percobaan. Coba lagi nanti.";
+            
+            toast.error(msg);
         }
     };
 
@@ -32,7 +44,9 @@ export default function LoginPage() {
                     <div>
                         <label className="text-xs font-bold text-slate-500 block mb-1.5">Email</label>
                         <input 
-                            type="email" 
+                            type="email"
+                            name="email" // [FIX] Tambah name
+                            autoComplete="email" // [FIX] Tambah autocomplete
                             className="input-enhanced w-full bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-white" 
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
@@ -41,7 +55,9 @@ export default function LoginPage() {
                     <div>
                         <label className="text-xs font-bold text-slate-500 block mb-1.5">Password</label>
                         <input 
-                            type="password" 
+                            type="password"
+                            name="password" // [FIX] Tambah name
+                            autoComplete="current-password" // [FIX] Tambah autocomplete
                             className="input-enhanced w-full bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-white" 
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}

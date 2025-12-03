@@ -2,14 +2,26 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { 
-    collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, serverTimestamp 
+    collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, where, serverTimestamp 
 } from 'firebase/firestore';
 import { db, appId } from '@/lib/firebase';
 import { addItem } from '@/lib/db';
-import { generateSubtasks } from '@/lib/ai';
+import { generateSubtasksAction } from '@/app/actions/ai'; // Import action AI
+import { addXP, XP_VALUES } from '@/lib/gamification'; // [TAMBAH] Import Gamification
 
 // --- DND KIT IMPORTS ---
-import { DndContext, useDraggable, useDroppable, DragOverlay, closestCorners } from '@dnd-kit/core';
+import { 
+    DndContext, 
+    useDraggable, 
+    useDroppable, 
+    DragOverlay, 
+    closestCorners,
+    useSensor, 
+    useSensors, 
+    PointerSensor,
+    TouchSensor,
+    MouseSensor
+} from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 
 // --- 1. KOMPONEN KONTEN KARTU (TAMPILAN) ---
@@ -144,9 +156,15 @@ export default function ProjectsPage() {
     useEffect(() => {
         if (!user) return;
         
-        // 1. Projects
-        const unsubP = onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'projects'), orderBy('createdAt', 'desc')), 
-            s => setProjects(s.docs.map(d => ({ id: d.id, ...d.data() })))
+        // Projects Query dengan Filter Soft Delete
+        const qP = query(
+            collection(db, 'artifacts', appId, 'users', user.uid, 'projects'), 
+            where('deleted', '!=', true), // <--- Filter ini wajib
+            orderBy('createdAt', 'desc')
+        );
+        
+        const unsubP = onSnapshot(qP, (s) => 
+            setProjects(s.docs.map(d => ({ id: d.id, ...d.data() })))
         );
         
         // 2. Tasks (untuk hitung progress)
@@ -164,6 +182,16 @@ export default function ProjectsPage() {
         return () => { unsubP(); unsubT(); };
     }, [user]);
 
+    // [FIX] Konfigurasi Sensor:
+    // 1. Mouse: Drag aktif jika digeser 10px (mencegah klik tidak sengaja)
+    // 2. Touch: Drag HANYA aktif jika ditahan 250ms (agar user tetap bisa scroll)
+    const sensors = useSensors(
+        useSensor(MouseSensor, { activationConstraint: { distance: 10 } }),
+        useSensor(TouchSensor, { 
+            activationConstraint: { delay: 250, tolerance: 5 } 
+        })
+    );
+
     // --- LOGIC DRAG & DROP ---
     const handleDragStart = (event) => setActiveDragId(event.active.id);
 
@@ -172,11 +200,18 @@ export default function ProjectsPage() {
         setActiveDragId(null);
 
         if (over && active.id !== over.id) {
-            const newStatus = over.id; // ID kolom (todo, progress, done)
-            
-            // Update Firestore
+            const newStatus = over.id; 
+            const oldStatus = active.data.current?.status; // Ambil status lama
+
             const projectRef = doc(db, 'artifacts', appId, 'users', user.uid, 'projects', active.id);
             await updateDoc(projectRef, { status: newStatus });
+
+            // [FIX] Cek jika pindah ke DONE dari status lain
+            if (newStatus === 'done' && oldStatus !== 'done') {
+                const projName = active.data.current?.name || 'Project';
+                await addXP(user.uid, XP_VALUES.PROJECT_DONE, 'PROJECT_DONE', `Project Tuntas: ${projName}`);
+                toast.success("Project Selesai! +100 XP", { icon: '🎉' });
+            }
         }
     };
 
@@ -187,7 +222,8 @@ export default function ProjectsPage() {
             name: newProjName, 
             status: 'todo', 
             goalId: selectedGoalId || '', 
-            createdAt: serverTimestamp() 
+            createdAt: serverTimestamp(),
+            deleted: false // <--- Tambahkan ini
         });
         setNewProjName(''); 
         setSelectedGoalId('');
@@ -201,14 +237,15 @@ export default function ProjectsPage() {
         setIsMagicLoading(true);
         try {
             // 1. Generate Subtasks
-            const steps = await generateSubtasks(newProjName);
+            const steps = await generateSubtasksAction(newProjName);
             
             // 2. Buat Project
             const projRef = await addItem(user.uid, 'projects', { 
                 name: newProjName, 
                 status: 'todo', 
                 goalId: selectedGoalId || '', 
-                createdAt: serverTimestamp() 
+                createdAt: serverTimestamp(),
+                deleted: false // <--- Tambahkan ini
             });
             
             // 3. Masukkan Tasks ke Inbox (Linked)
@@ -233,8 +270,13 @@ export default function ProjectsPage() {
     };
 
     const deleteProject = async (id) => { 
-        if(confirm('Hapus project ini beserta progressnya?')) {
-            await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'projects', id));
+        if(confirm('Pindahkan project ini ke sampah?')) {
+            // Gunakan updateDoc, BUKAN deleteDoc
+            await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'projects', id), {
+                deleted: true,
+                deletedAt: serverTimestamp()
+            });
+            // Tidak perlu toast di sini jika UI update otomatis via snapshot, tapi boleh ditambahkan
         }
     };
 
@@ -242,7 +284,13 @@ export default function ProjectsPage() {
     const activeProjectData = activeDragId ? projects.find(p => p.id === activeDragId) : null;
 
     return (
-        <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd} collisionDetection={closestCorners}>
+        // [FIX] Pasang sensors ke DndContext
+        <DndContext 
+            sensors={sensors} 
+            onDragStart={handleDragStart} 
+            onDragEnd={handleDragEnd} 
+            collisionDetection={closestCorners}
+        >
             <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 md:pb-8 animate-enter">
                 <div className="mb-8">
                     <h1 className="text-2xl font-bold text-white mb-1">Projects Board</h1>

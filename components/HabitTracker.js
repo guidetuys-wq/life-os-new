@@ -1,10 +1,11 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteField, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteField, deleteDoc, increment} from 'firebase/firestore';
 import { db, appId } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { addXP, XP_VALUES } from '@/lib/gamification';
 import { addItem } from '@/lib/db';
+import { getLocalDate } from '@/lib/utils';
 
 export default function HabitTracker() {
     const { user } = useAuth();
@@ -31,22 +32,30 @@ export default function HabitTracker() {
         setIsAdding(false);
     };
 
-    // Toggle Check (Bisa hari ini atau hari sebelumnya)
+    // [FIX] Ganti logic toggleHabit
     const toggleHabit = async (habit, dateIso) => {
         const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'habits', habit.id);
         const isDone = habit.history && habit.history[dateIso];
+        const today = getLocalDate(); // Pastikan helper tanggal lokal sudah dipakai (dari fix sebelumnya)
 
         if (isDone) {
             // Uncheck (Hapus)
             await updateDoc(ref, { [`history.${dateIso}`]: deleteField() });
+            
+            // [FIX] Tarik kembali XP jika uncheck dilakukan hari ini
+            if (dateIso === today) {
+                // Kirim nilai negatif untuk mengurangi XP
+                await addXP(user.uid, -XP_VALUES.HABIT_STREAK, 'HABIT_UNDO', `Undo: ${habit.name}`);
+                toast.error("Habit dibatalkan (-XP)", { icon: 'u21a9ufe0f' });
+            }
         } else {
             // Check
             await updateDoc(ref, { [`history.${dateIso}`]: true });
             
-            // Beri XP hanya jika yang dicentang adalah HARI INI
-            const today = new Date().toISOString().split('T')[0];
+            // Beri XP
             if (dateIso === today) {
                 await addXP(user.uid, XP_VALUES.HABIT_STREAK, 'HABIT_DONE', `Habit: ${habit.name}`);
+                toast.success("Habit Done!", { icon: 'u2728' });
             }
         }
     };
@@ -58,17 +67,23 @@ export default function HabitTracker() {
         }
     };
 
-    // Generate 7 Hari Terakhir (Untuk Heatmap)
-    // [Hari ini, Kemarin, ..., H-6]
+    // [FIX] Ganti logic generate 7 hari terakhir
     const last7Days = Array.from({ length: 7 }, (_, i) => {
         const d = new Date();
-        d.setDate(d.getDate() - i); // Mundur i hari
+        d.setDate(d.getDate() - i);
+        
+        // Manual formatting agar sesuai local time
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const isoDate = `${year}-${month}-${day}`;
+
         return {
-            iso: d.toISOString().split('T')[0], // YYYY-MM-DD
-            dayName: d.toLocaleDateString('id-ID', { weekday: 'narrow' }), // S, S, R, K...
-            fullDate: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) // 1 Des
+            iso: isoDate, // Gunakan format lokal YYYY-MM-DD
+            dayName: d.toLocaleDateString('id-ID', { weekday: 'narrow' }),
+            fullDate: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
         };
-    }).reverse(); // Balik agar urutannya H-6 -> Hari Ini (Kiri ke Kanan)
+    }).reverse();
 
     return (
         <div className="glass-card flex flex-col h-full p-5">

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { chatWithNotes } from '@/lib/ai';
+import { chatWithNotesAction } from '@/app/actions/ai';
 import toast from 'react-hot-toast';
 
 export default function NotesChat() {
@@ -21,7 +21,7 @@ export default function NotesChat() {
         setIsLoading(true);
 
         try {
-            const aiResponse = await chatWithNotes(user.uid, input);
+            const aiResponse = await chatWithNotesAction(user.uid, input);
             const aiMessage = { role: 'ai', content: aiResponse };
             setMessages(prev => [...prev, aiMessage]);
         } catch (error) {

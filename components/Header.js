@@ -8,23 +8,32 @@ import toast from 'react-hot-toast';
 export default function Header() {
     const { user } = useAuth();
     
-    // State Variables (Ini yang sebelumnya hilang)
+    // State Variables
     const [time, setTime] = useState('');
+    const [greeting, setGreeting] = useState('Halo'); // State greeting (anti-blink)
     const [weather, setWeather] = useState({ temp: '--', icon: '🌤️' });
     const [quickTask, setQuickTask] = useState('');
 
-    // 1. Live Clock Logic
+    // 1. Live Clock Logic (Client-Side Only)
     useEffect(() => {
-        // Set waktu awal agar tidak kosong saat load
-        setTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
-
-        const timer = setInterval(() => {
+        // Fungsi update waktu
+        const updateClock = () => {
             setTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
-        }, 1000);
+        };
+
+        updateClock(); // Set awal
+        const timer = setInterval(updateClock, 1000); // Update tiap detik
         return () => clearInterval(timer);
     }, []);
 
-    // 2. Weather Logic
+    // 2. Greeting Logic (Client-Side Only)
+    useEffect(() => {
+        if (user?.displayName) {
+            setGreeting(getGreeting(user.displayName.split(' ')[0]));
+        }
+    }, [user]);
+
+    // 3. Weather Logic
     useEffect(() => {
         if (!navigator.geolocation) return;
         navigator.geolocation.getCurrentPosition(async (pos) => {
@@ -46,7 +55,7 @@ export default function Header() {
         return "🌡️";
     };
 
-    // 3. Quick Capture Logic
+    // 4. Quick Capture Logic
     const handleQuickCapture = async (e) => {
         if (e.key === 'Enter' && quickTask.trim()) {
             try {
@@ -66,9 +75,10 @@ export default function Header() {
         }
     };
 
-    // --- TAMPILAN PREMIUM (UI) ---
     return (
         <header className="sticky top-0 z-30 bg-slate-950/70 backdrop-blur-xl border-b border-white/5 px-6 py-4 flex justify-between items-center transition-all">
+            
+            {/* BAGIAN KIRI: Jam & Sapaan */}
             <div className="flex items-center gap-6">
                 <div>
                     <h1 className="text-3xl font-mono font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400 tracking-tight">
@@ -77,12 +87,13 @@ export default function Header() {
                     <div className="flex items-center gap-2 mt-1">
                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
                          <p className="text-xs text-slate-400 font-medium">
-                            {getGreeting(user?.displayName?.split(' ')[0] || 'User')}
+                            {greeting}
                         </p>
                     </div>
                 </div>
             </div>
 
+            {/* BAGIAN KANAN: Cuaca & Input Cepat */}
             <div className="flex items-center gap-4">
                 {/* Weather Widget (Minimalist) */}
                 <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/50 border border-white/5">

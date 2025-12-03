@@ -4,6 +4,7 @@ import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 import { db, appId } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { addXP } from '@/lib/gamification';
+import { getLocalDate } from '@/lib/utils';
 
 export default function Wellness() {
     const { user } = useAuth();
@@ -11,7 +12,7 @@ export default function Wellness() {
 
     useEffect(() => {
         if (!user) return;
-        const today = new Date().toISOString().split('T')[0];
+        const today = getLocalDate(); // [FIX] Gunakan local date
         const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'wellness', today);
         
         const unsub = onSnapshot(ref, (snap) => {
@@ -22,15 +23,23 @@ export default function Wellness() {
     }, [user]);
 
     const updateWellness = async (newData) => {
-        const today = new Date().toISOString().split('T')[0];
+        const today = getLocalDate();
         const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'wellness', today);
         await setDoc(ref, newData, { merge: true });
     };
 
     const addWater = async () => {
-        const newCount = Math.min((data.water || 0) + 1, 8);
+        const current = data.water || 0;
+        if (current >= 8) return; // [FIX] Stop jika sudah penuh
+
+        const newCount = current + 1;
         await updateWellness({ water: newCount });
-        if(newCount === 8) await addXP(user.uid, 5, 'WELLNESS_GOAL', 'Target Minum Tercapai');
+        
+        // [FIX] Cek kondisi spesifik agar XP hanya cair sekali
+        if(newCount === 8) {
+            await addXP(user.uid, 5, 'WELLNESS_GOAL', 'Target Minum Tercapai');
+            // Opsional: Tambah efek suara/confetti di sini
+        }
     };
 
     const setMood = async (m) => {

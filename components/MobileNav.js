@@ -8,7 +8,8 @@ export default function MobileNav() {
     const [showMenu, setShowMenu] = useState(false);
 
     const NavItem = ({ href, icon, label }) => {
-        const isActive = pathname === href;
+        const isActive = pathname.startsWith(href);
+        
         return (
             <Link href={href} className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all w-16 ${isActive ? 'text-blue-500' : 'text-slate-500 hover:text-slate-300'}`}>
                 <span className="material-symbols-rounded text-2xl">{icon}</span>
@@ -25,9 +26,9 @@ export default function MobileNav() {
                 
                 {/* FAB (Floating Action Button) Tengah */}
                 <div className="relative -mt-8 group z-50">
-                    <button className="w-14 h-14 rounded-full bg-blue-600 text-white shadow-2xl shadow-blue-600/40 border-4 border-slate-950 flex items-center justify-center active:scale-90 transition-transform">
-                         <Link href="/notes"><span className="material-symbols-rounded text-3xl">add</span></Link>
-                    </button>
+                    <Link href="/notes" className="w-14 h-14 rounded-full bg-blue-600 text-white shadow-2xl shadow-blue-600/40 border-4 border-slate-950 flex items-center justify-center active:scale-90 transition-transform">
+                         <span className="material-symbols-rounded text-3xl">add</span>
+                    </Link>
                 </div>
 
                 <NavItem href="/finance" icon="wallet" label="Dompet" />

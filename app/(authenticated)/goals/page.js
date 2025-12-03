@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, where, serverTimestamp } from 'firebase/firestore';
 import { db, appId } from '@/lib/firebase';
 import { addItem } from '@/lib/db';
 import toast from 'react-hot-toast';
@@ -13,6 +13,7 @@ import Select from '@/components/ui/Select';
 export default function GoalsPage() {
     const { user } = useAuth();
     const [goals, setGoals] = useState([]);
+    const [localProgress, setLocalProgress] = useState({});
     const [showModal, setShowModal] = useState(false);
     
     // State Form
@@ -23,15 +24,39 @@ export default function GoalsPage() {
         progress: 0 
     });
 
-    // 1. Fetch Goals Realtime
+    // UPDATE 1: Filter Query
     useEffect(() => {
         if (!user) return;
-        const q = query(collection(db, 'artifacts', appId, 'users', user.uid, 'goals'), orderBy('createdAt', 'desc'));
+        const q = query(
+            collection(db, 'artifacts', appId, 'users', user.uid, 'goals'), 
+            where('deleted', '!=', true), // <--- Filter
+            orderBy('createdAt', 'desc')
+        );
         const unsub = onSnapshot(q, (snap) => {
             setGoals(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         });
         return () => unsub();
     }, [user]);
+
+    // [UPDATE] Handler Slider: Hanya update UI lokal
+    const handleSliderChange = (id, val) => {
+        setLocalProgress(prev => ({ ...prev, [id]: val }));
+    };
+
+    // [BARU] Handler Simpan: Update DB saat slider dilepas
+    const handleSliderCommit = async (id, val) => {
+        try {
+            await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'goals', id), { 
+                progress: parseInt(val) 
+            });
+            // Hapus state lokal setelah sukses simpan agar kembali sinkron dengan DB
+            setLocalProgress(prev => {
+                const newState = { ...prev };
+                delete newState[id];
+                return newState;
+            });
+        } catch (e) { toast.error("Gagal update progress"); }
+    };
 
     // 2. Tambah Goal Baru
     const handleSave = async (e) => {
@@ -44,12 +69,15 @@ export default function GoalsPage() {
         try {
             await addItem(user.uid, 'goals', {
                 ...formData,
-                progress: 0
+                progress: 0,
+                deleted: false // <--- [WAJIB DITAMBAHKAN] Agar lolos filter query
             });
+            
             setFormData({ title: '', area: 'Career', deadline: '', progress: 0 });
             setShowModal(false);
             toast.success("Target baru ditetapkan!", { icon: '🎯' });
         } catch (error) {
+            console.error(error); // Cek console jika masih error
             toast.error("Gagal menyimpan target.");
         }
     };
@@ -64,12 +92,16 @@ export default function GoalsPage() {
         }
     };
 
-    // 4. Hapus Goal
+    // UPDATE 2: Soft Delete
     const handleDelete = async (id) => {
-        if(confirm('Yakin ingin menghapus target ini?')) {
+        if(confirm('Pindahkan target ini ke sampah?')) {
             try {
-                await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'goals', id));
-                toast.success('Target dihapus');
+                // updateDoc menggantikan deleteDoc
+                await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'goals', id), {
+                    deleted: true,
+                    deletedAt: serverTimestamp()
+                });
+                toast.success('Target dipindahkan ke sampah');
             } catch (e) { toast.error("Gagal menghapus"); }
         }
     };
@@ -122,6 +154,7 @@ export default function GoalsPage() {
                 {goals.map(g => {
                     const timeLeft = getDaysLeft(g.deadline);
                     const gradientClass = getAreaStyle(g.area);
+                    const currentProgress = localProgress[g.id] !== undefined ? localProgress[g.id] : g.progress;
                     
                     return (
                         <div key={g.id} className={`group relative p-6 rounded-2xl border bg-gradient-to-br transition-all duration-300 flex flex-col justify-between min-h-[200px] ${gradientClass}`}>
@@ -156,19 +189,22 @@ export default function GoalsPage() {
                                 </div>
                                 <div className="relative h-2 w-full bg-slate-950/50 rounded-full overflow-hidden border border-white/5">
                                     <div 
-                                        className={`absolute top-0 left-0 h-full rounded-full transition-all duration-300 ${g.progress >= 100 ? 'bg-emerald-500' : 'bg-blue-500'}`} 
-                                        style={{ width: `${g.progress}%` }}
+                                        className={`absolute top-0 left-0 h-full rounded-full transition-all duration-100 ${currentProgress >= 100 ? 'bg-emerald-500' : 'bg-blue-500'}`} 
+                                        style={{ width: `${currentProgress}%` }} // Gunakan currentProgress
                                     ></div>
-                                    {/* Invisible Range Input for Dragging */}
+                                    
                                     <input 
                                         type="range" min="0" max="100" 
-                                        value={g.progress || 0} 
-                                        onChange={(e) => updateProgress(g.id, e.target.value)}
+                                        value={currentProgress || 0} 
+                                        // 1. Update UI instan (murah)
+                                        onChange={(e) => handleSliderChange(g.id, e.target.value)}
+                                        // 2. Update DB hanya saat dilepas (hemat)
+                                        onMouseUp={(e) => handleSliderCommit(g.id, e.target.value)}
+                                        onTouchEnd={(e) => handleSliderCommit(g.id, e.target.value)}
                                         className="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer z-10"
                                     />
                                 </div>
                             </div>
-
                         </div>
                     );
                 })}

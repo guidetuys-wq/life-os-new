@@ -1,7 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { collection, query, orderBy, onSnapshot, limit, deleteDoc, doc } from 'firebase/firestore';
+import { 
+    collection, query, orderBy, onSnapshot, limit, 
+    deleteDoc, doc, updateDoc, increment, setDoc, getDoc // <--- [TAMBAH] Import ini
+} from 'firebase/firestore';
 import { db, appId } from '@/lib/firebase';
 import { addItem } from '@/lib/db';
 import { formatMoney } from '@/lib/utils';
@@ -13,67 +16,106 @@ import CategoryManager from '@/components/CategoryManager';
 import Input from '@/components/ui/Input';    // <-- Import UI Baru
 import Select from '@/components/ui/Select';  // <-- Import UI Baru
 
+const DEFAULT_CATEGORIES = ['Makan', 'Transport', 'Belanja', 'Tagihan', 'Hiburan', 'Kesehatan', 'Gaji', 'Investasi', 'General'];
+
 export default function FinancePage() {
     const { user } = useAuth();
     
     // States Data
     const [transactions, setTransactions] = useState([]);
     const [categories, setCategories] = useState([]);
+    // [UPDATE] State stats sekarang ambil dari "Global Stats", bukan hitungan manual 50 item
     const [stats, setStats] = useState({ balance: 0, income: 0, expense: 0 });
     
     // States UI
     const [formData, setFormData] = useState({ amount: '', desc: '', type: 'expense', category: 'General' });
     const [showCatManager, setShowCatManager] = useState(false);
 
-    // 1. Fetch Transactions & Calculate Stats
+    // [UPDATE] Fetch Global Stats (Realtime)
     useEffect(() => {
         if (!user) return;
-        const q = query(collection(db, 'artifacts', appId, 'users', user.uid, 'transactions'), orderBy('createdAt', 'desc'), limit(50));
-        const unsub = onSnapshot(q, (snap) => {
-            const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            setTransactions(data);
-            let inc = 0, exp = 0;
-            data.forEach(t => { if(t.type === 'income') inc += t.amount; else exp += t.amount; });
-            setStats({ income: inc, expense: exp, balance: inc - exp });
+        const statsRef = doc(db, 'artifacts', appId, 'users', user.uid, 'stats', 'finance');
+        const unsub = onSnapshot(statsRef, (snap) => {
+            if (snap.exists()) setStats(snap.data());
+            else setStats({ balance: 0, income: 0, expense: 0 });
         });
-        return () => unsub();
+        
+        // Fetch 50 Transaksi terakhir (Hanya untuk list history)
+        const q = query(collection(db, 'artifacts', appId, 'users', user.uid, 'transactions'), orderBy('createdAt', 'desc'), limit(50));
+        const unsubTrans = onSnapshot(q, (snap) => {
+            setTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        });
+
+        return () => { unsub(); unsubTrans(); };
     }, [user]);
 
-    // 2. Fetch Categories
+    // [FIX] Gunakan DEFAULT_CATEGORIES di useEffect
     useEffect(() => {
         if (!user) return;
         const q = query(collection(db, 'artifacts', appId, 'users', user.uid, 'categories'), orderBy('name', 'asc'));
         const unsub = onSnapshot(q, (snap) => {
             const customCats = snap.docs.map(d => d.data().name);
-            const defaultCats = ['Makan', 'Transport', 'Belanja', 'Tagihan', 'Hiburan', 'Kesehatan', 'Gaji', 'Investasi', 'General'];
-            setCategories([...new Set([...defaultCats, ...customCats])]);
+            // Set unik gabungan default & custom
+            setCategories([...new Set([...DEFAULT_CATEGORIES, ...customCats])]);
         });
         return () => unsub();
     }, [user]);
 
-    // 3. Handle Save
+    // Helper untuk update Global Stats
+    const updateGlobalStats = async (amount, type, isDeleting = false) => {
+        const statsRef = doc(db, 'artifacts', appId, 'users', user.uid, 'stats', 'finance');
+        
+        // Jika deleting, balik logikanya (hapus income = kurang saldo)
+        const multiplier = isDeleting ? -1 : 1; 
+        const amountVal = Math.abs(amount) * multiplier;
+
+        const updates = {
+            [type]: increment(amountVal), // Update field 'income' atau 'expense'
+            balance: increment(type === 'income' ? amountVal : -amountVal) // Update balance
+        };
+
+        // Gunakan setDoc dengan merge agar aman jika dokumen belum ada
+        await setDoc(statsRef, updates, { merge: true });
+    };
+
+    // [UPDATE] Handle Save dengan Update Stats
     const handleSave = async (e) => {
         e.preventDefault();
-        const amt = parseInt(formData.amount);
-        if (!amt || !formData.desc) { toast.error("Lengkapi data dulu!"); return; }
+        const amt = Math.abs(Number(formData.amount));
+        if (!amt || !formData.desc) { toast.error("Lengkapi data!"); return; }
 
         try {
+            // 1. Simpan Transaksi
             await addItem(user.uid, 'transactions', {
-                amount: amt, note: formData.desc, type: formData.type, category: formData.category || 'General'
+                amount: amt, 
+                note: formData.desc, 
+                type: formData.type, 
+                category: formData.category || 'General'
             });
+
+            // 2. Update Global Stats
+            await updateGlobalStats(amt, formData.type, false);
+
             setFormData(prev => ({ ...prev, amount: '', desc: '' }));
             toast.success('Transaksi dicatat!', { icon: '💰' });
-        } catch (error) { toast.error('Gagal menyimpan data'); }
+        } catch (error) { toast.error('Gagal menyimpan'); }
     };
 
-    // 4. Handle Delete
-    const handleDelete = async (id) => {
-        if(confirm('Hapus transaksi ini?')) {
-            try { await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'transactions', id)); toast.success('Dihapus'); } 
-            catch { toast.error('Gagal menghapus'); }
+    // [UPDATE] Handle Delete dengan Update Stats (Reversal)
+    const handleDelete = async (transaction) => { // Terima object transaction, bukan cuma ID
+        if(confirm('Hapus transaksi ini? Saldo akan disesuaikan.')) {
+            try {
+                // 1. Hapus Doc
+                await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'transactions', transaction.id));
+                
+                // 2. Revert Global Stats
+                await updateGlobalStats(transaction.amount, transaction.type, true);
+                
+                toast.success('Dihapus & Saldo dikembalikan');
+            } catch { toast.error('Gagal menghapus'); }
         }
     };
-
+    
     return (
         <div className="p-4 md:p-8 max-w-5xl mx-auto pb-32 animate-enter">
             <h1 className="text-2xl font-bold text-white mb-6 tracking-tight">Dompet & Cashflow</h1>
@@ -142,7 +184,8 @@ export default function FinancePage() {
 
                         <Input 
                             label="Jumlah (Rp)"
-                            type="number" 
+                            type="number"
+                            min="0"
                             icon="attach_money"
                             placeholder="0"
                             className="font-mono text-lg font-bold tracking-wide"
@@ -206,7 +249,7 @@ export default function FinancePage() {
                                 {t.type === 'income' ? '+' : '-'}{formatMoney(t.amount)}
                             </span>
                             <button 
-                                onClick={() => handleDelete(t.id)} 
+                                onClick={() => handleDelete(t)}
                                 className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all opacity-0 group-hover:opacity-100"
                             >
                                 <span className="material-symbols-rounded text-lg">delete</span>

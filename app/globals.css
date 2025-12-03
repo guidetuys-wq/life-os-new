@@ -2,6 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
+/* [TAMBAH] Definisi Class Material Symbols */
+.material-symbols-rounded {
+  font-family: 'Material Symbols Rounded';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;  /* Ukuran default */
+  display: inline-block;
+  line-height: 1;
+  text-transform: none;
+  letter-spacing: normal;
+  word-wrap: normal;
+  white-space: nowrap;
+  direction: ltr;
+  /* Support for all WebKit browsers. */
+  -webkit-font-smoothing: antialiased;
+  /* Support for Safari and Chrome. */
+  text-rendering: optimizeLegibility;
+  /* Support for Firefox. */
+  -moz-osx-font-smoothing: grayscale;
+}
+
 :root {
   --bg-dark: #0f172a;
 }
@@ -11,6 +32,13 @@ body {
   color: #e2e8f0;
   -webkit-tap-highlight-color: transparent;
   overflow-x: hidden;
+}
+
+/* [FIX] Turunkan Z-Index Texture Overlay */
+body::before {
+  /* ... content, pos, dll ... */
+  z-index: -1; /* Ganti dari 50 ke -1 agar background ada di BELAKANG konten */
+  /* pointer-events: none; (tetap ada) */
 }
 
 /* --- PREMIUM TEXTURE OVERLAY --- */

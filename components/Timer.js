@@ -14,30 +14,48 @@ export default function Timer() {
     const [activeTasks, setActiveTasks] = useState([]);
     const [selectedTaskId, setSelectedTaskId] = useState('');
 
-    // Fetch Task saat komponen dimuat
+    // [FIX] Load state dari LocalStorage saat mount
     useEffect(() => {
-        if (!user) return;
-        const fetchTasks = async () => {
-            // Ambil task yang belum selesai
-            const q = query(collection(db, 'artifacts', appId, 'users', user.uid, 'tasks'), where('completed', '==', false));
-            const snap = await getDocs(q);
-            setActiveTasks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        };
-        fetchTasks();
-    }, [user]);
+        const savedEndTime = localStorage.getItem('timerTarget');
+        if (savedEndTime) {
+            const left = Math.ceil((parseInt(savedEndTime) - Date.now()) / 1000);
+            if (left > 0) {
+                setTimeLeft(left);
+                setIsRunning(true);
+            } else {
+                localStorage.removeItem('timerTarget'); // Timer sudah habis saat offline
+            }
+        }
+    }, []);
 
-    // Timer Logic (Sama seperti sebelumnya, dengan tambahan finish logic)
+    // [FIX] Update Timer & LocalStorage
     useEffect(() => {
         let interval = null;
         if (isRunning && timeLeft > 0) {
-            interval = setInterval(() => setTimeLeft((p) => p - 1), 1000);
-        } else if (timeLeft === 0 && isRunning) {
-            handleFinish();
+            // Set target time di localStorage jika belum ada
+            if (!localStorage.getItem('timerTarget')) {
+                const target = Date.now() + (timeLeft * 1000);
+                localStorage.setItem('timerTarget', target.toString());
+            }
+
+            interval = setInterval(() => {
+                setTimeLeft((p) => {
+                    const next = p - 1;
+                    // Sinkronisasi sesekali bisa ditambahkan, tapi ini cukup
+                    return next;
+                });
+            }, 1000);
+        } else if (timeLeft <= 0 && isRunning) {
+            handleFinish(); // Timer selesai
+        } else if (!isRunning) {
+            // Jika dipause manual, hapus target
+            localStorage.removeItem('timerTarget');
         }
         return () => clearInterval(interval);
     }, [isRunning, timeLeft]);
 
     const handleFinish = async () => {
+        localStorage.removeItem('timerTarget');
         setIsRunning(false);
         setTimeLeft(25 * 60);
         
