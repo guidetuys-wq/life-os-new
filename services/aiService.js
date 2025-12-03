@@ -1,11 +1,12 @@
 // services/aiService.js
-import { chatWithNotesAction } from '@/app/actions/ai';
+// [FIX] Import dari 'second-brain', bukan 'ai' lagi
+import { chatWithNotesAction } from '@/app/actions/second-brain';
 
 export const AiService = {
-    // Wrapper untuk chat RAG
+    // Wrapper untuk chat RAG & Agent
     chatWithBrain: async (uid, message) => {
         try {
-            // Panggil Server Action
+            // Panggil Server Action baru
             const response = await chatWithNotesAction(uid, message);
             return response;
         } catch (error) {

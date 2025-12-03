@@ -4,24 +4,21 @@ import { useAuth } from '@/context/AuthContext';
 import { GoalService } from '@/services/goalService';
 import toast from 'react-hot-toast';
 
-// Import UI Premium
-import Input from '@/components/ui/Input';
-import Select from '@/components/ui/Select';
+// Import Modals Baru
+import GoalModal from '@/components/modals/GoalModal';
+import MagicPlanModal from '@/components/modals/MagicPlanModal';
 
 export default function GoalsPage() {
     const { user } = useAuth();
     
     // Data States
     const [goals, setGoals] = useState([]);
-    const [localProgress, setLocalProgress] = useState({}); // State lokal untuk slider
-    const [showModal, setShowModal] = useState(false);
+    const [localProgress, setLocalProgress] = useState({});
     
-    // Form State
-    const [formData, setFormData] = useState({ 
-        title: '', 
-        area: 'Career', 
-        deadline: ''
-    });
+    // Modal States
+    const [isAddOpen, setIsAddOpen] = useState(false);
+    const [isMagicOpen, setIsMagicOpen] = useState(false);
+    const [selectedGoal, setSelectedGoal] = useState(null);
 
     // 1. Fetch Data
     useEffect(() => {
@@ -31,55 +28,35 @@ export default function GoalsPage() {
     }, [user]);
 
     // 2. Actions
-    const handleSave = async (e) => {
-        e.preventDefault();
-        if (!formData.title.trim()) return toast.error("Judul target wajib diisi!");
-
-        try {
-            await GoalService.addGoal(user.uid, formData);
-            setFormData({ title: '', area: 'Career', deadline: '' });
-            setShowModal(false);
-            toast.success("Target baru ditetapkan!", { icon: '🎯' });
-        } catch (error) {
-            toast.error("Gagal menyimpan target.");
-        }
-    };
-
     const handleDelete = (id) => {
-        if(confirm('Pindahkan target ini ke sampah?')) {
-            GoalService.deleteGoal(user.uid, id);
-        }
+        if(confirm('Pindahkan target ini ke sampah?')) GoalService.deleteGoal(user.uid, id);
     };
 
-    // 3. Logic Slider Hemat Biaya
-    // Saat digeser: Hanya update state lokal (UI instan, 0 biaya DB)
-    const handleSliderChange = (id, val) => {
-        setLocalProgress(prev => ({ ...prev, [id]: val }));
+    const handleOpenMagic = (goal) => {
+        setSelectedGoal(goal);
+        setIsMagicOpen(true);
     };
 
-    // Saat dilepas: Baru kirim ke Firestore (1x write)
+    // 3. Slider Logic
+    const handleSliderChange = (id, val) => setLocalProgress(prev => ({ ...prev, [id]: val }));
+    
     const handleSliderCommit = async (id, val) => {
         try {
             await GoalService.updateGoal(user.uid, id, { progress: parseInt(val) });
-            // Hapus state lokal agar kembali sinkron dengan data realtime DB
             setLocalProgress(prev => {
                 const newState = { ...prev };
                 delete newState[id];
                 return newState;
             });
-        } catch (e) {
-            toast.error("Gagal update progress");
-        }
+        } catch (e) { toast.error("Gagal update progress"); }
     };
 
-    // Helper: Hitung Sisa Hari
+    // Helper: Styles & Date
     const getDaysLeft = (dateString) => {
         if (!dateString) return { text: 'No Deadline', color: 'text-slate-500' };
-        
         const today = new Date();
         const target = new Date(dateString);
         const diff = Math.ceil((target - today) / (1000 * 60 * 60 * 24));
-
         if (diff < 0) return { text: `${Math.abs(diff)} Hari Lewat`, color: 'text-rose-400 font-bold' };
         if (diff === 0) return { text: 'Hari Ini!', color: 'text-amber-400 font-bold animate-pulse' };
         if (diff <= 7) return { text: `${diff} Hari Lagi 🔥`, color: 'text-amber-400 font-bold' };
@@ -88,18 +65,16 @@ export default function GoalsPage() {
 
     const getAreaStyle = (area) => {
         switch(area) {
-            case 'Finance': return 'from-emerald-900/40 to-slate-900 border-emerald-500/30 hover:border-emerald-500/50';
-            case 'Health': return 'from-rose-900/40 to-slate-900 border-rose-500/30 hover:border-rose-500/50';
-            case 'Career': return 'from-blue-900/40 to-slate-900 border-blue-500/30 hover:border-blue-500/50';
-            case 'Spiritual': return 'from-purple-900/40 to-slate-900 border-purple-500/30 hover:border-purple-500/50';
-            case 'Relationship': return 'from-pink-900/40 to-slate-900 border-pink-500/30 hover:border-pink-500/50';
-            default: return 'from-slate-800 to-slate-900 border-slate-700 hover:border-slate-500';
+            case 'Finance': return 'from-emerald-900/40 to-slate-900 border-emerald-500/30';
+            case 'Health': return 'from-rose-900/40 to-slate-900 border-rose-500/30';
+            case 'Career': return 'from-blue-900/40 to-slate-900 border-blue-500/30';
+            case 'Spiritual': return 'from-purple-900/40 to-slate-900 border-purple-500/30';
+            default: return 'from-slate-800 to-slate-900 border-slate-700';
         }
     };
 
     return (
         <div className="p-4 md:p-8 max-w-7xl mx-auto pb-32 animate-enter">
-            
             {/* Header */}
             <div className="flex justify-between items-end mb-8">
                 <div>
@@ -107,7 +82,7 @@ export default function GoalsPage() {
                     <p className="text-sm text-slate-400">Visi jangka panjang & Impianmu.</p>
                 </div>
                 <button 
-                    onClick={() => setShowModal(true)} 
+                    onClick={() => setIsAddOpen(true)} 
                     className="btn-primary px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-blue-600/20 flex items-center gap-2"
                 >
                     <span className="material-symbols-rounded text-lg">add_flag</span> Set Goal
@@ -119,26 +94,31 @@ export default function GoalsPage() {
                 {goals.map(g => {
                     const timeLeft = getDaysLeft(g.deadline);
                     const gradientClass = getAreaStyle(g.area);
-                    // Gunakan nilai lokal jika sedang digeser, atau nilai DB jika diam
                     const currentProgress = localProgress[g.id] !== undefined ? localProgress[g.id] : g.progress;
                     
                     return (
-                        <div key={g.id} className={`group relative p-6 rounded-2xl border bg-gradient-to-br transition-all duration-300 flex flex-col justify-between min-h-[200px] ${gradientClass}`}>
+                        <div key={g.id} className={`group relative p-6 rounded-2xl border bg-gradient-to-br transition-all duration-300 flex flex-col justify-between min-h-[220px] ${gradientClass} hover:border-white/20`}>
                             
-                            {/* Top: Area & Delete */}
+                            {/* Top: Area & Actions */}
                             <div className="flex justify-between items-start mb-4">
                                 <span className="bg-slate-950/50 border border-white/5 text-white text-[10px] font-bold uppercase px-2 py-1 rounded-lg backdrop-blur-sm tracking-wider">
                                     {g.area}
                                 </span>
-                                <button 
-                                    onClick={() => handleDelete(g.id)} 
-                                    className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-900/50 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all"
-                                >
-                                    <span className="material-symbols-rounded text-sm">delete</span>
-                                </button>
+                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button 
+                                        onClick={() => handleOpenMagic(g)}
+                                        className="w-8 h-8 rounded-full flex items-center justify-center bg-purple-500/20 hover:bg-purple-500 text-purple-400 hover:text-white transition-all shadow-lg shadow-purple-500/10"
+                                        title="Breakdown dengan AI"
+                                    >
+                                        <span className="material-symbols-rounded text-base">auto_awesome</span>
+                                    </button>
+                                    <button onClick={() => handleDelete(g.id)} className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-900/50 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 transition-all">
+                                        <span className="material-symbols-rounded text-sm">delete</span>
+                                    </button>
+                                </div>
                             </div>
 
-                            {/* Middle: Title & Date */}
+                            {/* Middle: Title */}
                             <div className="mb-6">
                                 <h3 className="text-xl font-bold text-white leading-tight mb-2">{g.title}</h3>
                                 <div className="flex items-center gap-2 text-xs">
@@ -147,18 +127,14 @@ export default function GoalsPage() {
                                 </div>
                             </div>
 
-                            {/* Bottom: Progress Slider */}
+                            {/* Bottom: Progress */}
                             <div>
                                 <div className="flex justify-between text-xs font-bold mb-2">
                                     <span className="text-slate-400 uppercase tracking-widest text-[10px]">Progress</span>
                                     <span className={g.progress >= 100 ? 'text-emerald-400' : 'text-white'}>{currentProgress}%</span>
                                 </div>
                                 <div className="relative h-2 w-full bg-slate-950/50 rounded-full overflow-hidden border border-white/5 group-hover:h-4 transition-all">
-                                    <div 
-                                        className={`absolute top-0 left-0 h-full rounded-full transition-all duration-100 ${currentProgress >= 100 ? 'bg-emerald-500' : 'bg-blue-500'}`} 
-                                        style={{ width: `${currentProgress}%` }} 
-                                    ></div>
-                                    
+                                    <div className={`absolute top-0 left-0 h-full rounded-full transition-all duration-100 ${currentProgress >= 100 ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${currentProgress}%` }}></div>
                                     <input 
                                         type="range" min="0" max="100" 
                                         value={currentProgress || 0} 
@@ -172,65 +148,21 @@ export default function GoalsPage() {
                         </div>
                     );
                 })}
-
-                {/* Empty State */}
-                {goals.length === 0 && (
-                    <div className="col-span-full py-20 text-center border-2 border-dashed border-slate-800 rounded-3xl opacity-50">
-                        <span className="material-symbols-rounded text-6xl text-slate-700 mb-4 block">flag</span>
-                        <p className="text-slate-500">Belum ada target impian.</p>
-                    </div>
-                )}
             </div>
 
-            {/* MODAL ADD GOAL */}
-            {showModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-enter">
-                    <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md p-6 relative shadow-2xl">
-                        <button onClick={() => setShowModal(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white">
-                            <span className="material-symbols-rounded text-xl">close</span>
-                        </button>
-                        
-                        <h3 className="text-xl font-bold text-white mb-1">Target Baru</h3>
-                        <p className="text-sm text-slate-400 mb-6">Apa yang ingin kamu capai?</p>
-
-                        <form onSubmit={handleSave} className="flex flex-col gap-5">
-                            <Input 
-                                label="Judul Target"
-                                placeholder="Cth: Tabungan 100 Juta..." 
-                                value={formData.title} 
-                                onChange={e => setFormData({...formData, title: e.target.value})}
-                                autoFocus
-                            />
-                            
-                            <div className="grid grid-cols-2 gap-4">
-                                <Select 
-                                    label="Area Hidup"
-                                    value={formData.area} 
-                                    onChange={e => setFormData({...formData, area: e.target.value})}
-                                >
-                                    <option value="Career">Career & Bisnis</option>
-                                    <option value="Finance">Keuangan</option>
-                                    <option value="Health">Kesehatan</option>
-                                    <option value="Spiritual">Spiritual</option>
-                                    <option value="Relationship">Relationship</option>
-                                    <option value="Lifestyle">Hobi / Lifestyle</option>
-                                </Select>
-
-                                <Input 
-                                    label="Deadline"
-                                    type="date"
-                                    value={formData.deadline}
-                                    onChange={e => setFormData({...formData, deadline: e.target.value})}
-                                />
-                            </div>
-
-                            <button type="submit" className="btn-primary w-full py-3.5 rounded-xl font-bold mt-2 shadow-lg shadow-blue-600/20 active:scale-95 transition-all">
-                                Simpan Target
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            )}
+            {/* MODALS (Terpisah & Bersih) */}
+            <GoalModal 
+                isOpen={isAddOpen} 
+                onClose={() => setIsAddOpen(false)} 
+                uid={user?.uid} 
+            />
+            
+            <MagicPlanModal 
+                isOpen={isMagicOpen} 
+                onClose={() => setIsMagicOpen(false)} 
+                goal={selectedGoal} 
+                uid={user?.uid} 
+            />
         </div>
     );
 }

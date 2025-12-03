@@ -8,15 +8,14 @@ import { addXP, XP_VALUES } from '@/lib/gamification';
 import toast from 'react-hot-toast';
 
 const COLLECTION = 'projects';
-
 const getCollectionRef = (uid) => collection(db, 'artifacts', appId, 'users', uid, COLLECTION);
 
 export const ProjectService = {
-    // 1. Subscribe Semua Project (Untuk Halaman Projects Board)
+    // 1. Subscribe All Projects
     subscribeProjects: (uid, callback) => {
         const q = query(
             getCollectionRef(uid),
-            where('deleted', '==', false), // [FIX] Gunakan == agar aman
+            where('deleted', '==', false),
             orderBy('createdAt', 'desc')
         );
         return onSnapshot(q, (snap) => {
@@ -24,28 +23,26 @@ export const ProjectService = {
         });
     },
 
-    // 2. Subscribe Project Aktif (Untuk Pilihan Dropdown di Dashboard)
-    // Mengambil project yang statusnya BUKAN 'done' (Todo & Progress)
+    // 2. Subscribe Active Projects
     subscribeActiveProjects: (uid, callback) => {
         const q = query(
             getCollectionRef(uid),
-            where('deleted', '==', false), // [FIX] Gunakan ==
-            where('status', '!=', 'done'), // [FIX] Satu-satunya inequality filter
+            where('deleted', '==', false),
+            where('status', '!=', 'done'),
             orderBy('createdAt', 'desc')
         );
         return onSnapshot(q, (snap) => {
             callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         }, (error) => {
-            // Jika error index muncul, cek console browser dan klik link yang diberikan Firestore
-            console.error("Active Projects Query Error:", error);
+            console.error("Active Projects Sub Error:", error);
         });
     },
 
-    // 3. Tambah Project
+    // 3. Tambah Project (FIX: Default ke 'progress')
     addProject: async (uid, data) => {
         return await addDoc(getCollectionRef(uid), {
-            ...data,
-            status: 'todo',
+            status: 'progress', // [FIX] Default masuk ke Progress
+            ...data,            // Data input (bisa override status jika perlu)
             deleted: false,
             createdAt: serverTimestamp()
         });
