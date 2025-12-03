@@ -231,10 +231,12 @@ export default function ProjectsPage() {
 
     const handleMagicPlan = async () => {
         if (!newProjName.trim()) {
-            alert("Isi nama project dulu agar AI tahu konteksnya!");
+            toast.error("Isi nama project dulu!"); // [FIX] Ganti alert
             return;
         }
         setIsMagicLoading(true);
+        const toastId = toast.loading("Sedang meracik rencana..."); // [FIX] Tambah loading toast
+
         try {
             // 1. Generate Subtasks
             const steps = await generateSubtasksAction(newProjName);
@@ -245,10 +247,10 @@ export default function ProjectsPage() {
                 status: 'todo', 
                 goalId: selectedGoalId || '', 
                 createdAt: serverTimestamp(),
-                deleted: false // <--- Tambahkan ini
+                deleted: false
             });
             
-            // 3. Masukkan Tasks ke Inbox (Linked)
+            // 3. Masukkan Tasks
             const batchPromises = steps.map(step => 
                 addItem(user.uid, 'tasks', {
                     text: step,
@@ -259,12 +261,12 @@ export default function ProjectsPage() {
             );
             await Promise.all(batchPromises);
 
-            alert(`✨ Magic Plan Berhasil! ${steps.length} langkah ditambahkan.`);
+            toast.success(`Magic Plan Berhasil! ${steps.length} langkah dibuat.`, { id: toastId }); // [FIX] Success toast
             setNewProjName(''); 
             setSelectedGoalId('');
         } catch (e) {
             console.error(e);
-            alert("Gagal menjalankan Magic Plan.");
+            toast.error("Gagal menjalankan Magic Plan.", { id: toastId }); // [FIX] Error toast
         }
         setIsMagicLoading(false);
     };
