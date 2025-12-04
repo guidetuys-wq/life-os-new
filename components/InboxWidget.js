@@ -1,88 +1,100 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { collection, query, orderBy, onSnapshot, getDocs, doc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, getDocs, doc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db, appId } from '@/lib/firebase';
 import { TaskService } from '@/services/taskService';
-import { addXP, XP_VALUES } from '@/lib/gamification';
 import toast from 'react-hot-toast';
-import { refineTaskAction } from '@/app/actions/second-brain';
+import { playSound } from '@/lib/sounds';
 
 export default function InboxWidget() {
     const { user } = useAuth();
     
     // States
     const [tasks, setTasks] = useState([]);
-    const [projects, setProjects] = useState([]); // [NEW] Untuk integrasi move-to-project
+    const [projects, setProjects] = useState([]); 
     const [newTask, setNewTask] = useState('');
-    const [newPriority, setNewPriority] = useState('normal'); // [NEW] Input Prioritas
+    const [newPriority, setNewPriority] = useState('normal'); 
     
     // UI States
-    const [editingTask, setEditingTask] = useState(null); // ID task yang sedang diedit
-    const [showProjectMenu, setShowProjectMenu] = useState(null); // ID task yang menu project-nya terbuka
+    const [editingTask, setEditingTask] = useState(null); 
+    const [selectedTasks, setSelectedTasks] = useState(new Set()); // [NEW] Set of IDs
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
 
-    // 1. DATA LISTENER
+    // 1. Fetch Data
     useEffect(() => {
         if (!user) return;
-
-        // A. Tasks Listener (Inbox Only: Not Completed & No Project)
-        const qTask = query(
-            collection(db, 'artifacts', appId, 'users', user.uid, 'tasks'), 
-            orderBy('createdAt', 'desc')
-        );
-        
+        const qTask = query(collection(db, 'artifacts', appId, 'users', user.uid, 'tasks'), orderBy('createdAt', 'desc'));
         const unsubTasks = onSnapshot(qTask, (snap) => {
             const rawTasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            // Filter client-side untuk Inbox: Belum selesai AND (ProjectId kosong/null)
-            const inboxTasks = rawTasks.filter(t => !t.completed && (!t.projectId || t.projectId === ''));
-            setTasks(inboxTasks);
+            setTasks(rawTasks.filter(t => !t.completed && (!t.projectId || t.projectId === '')));
         });
-
-        // B. Fetch Projects (Sekali saja untuk dropdown)
         const fetchProjects = async () => {
             const snap = await getDocs(query(collection(db, 'artifacts', appId, 'users', user.uid, 'projects')));
             setProjects(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         };
         fetchProjects();
-
         return () => unsubTasks();
     }, [user]);
 
-    // 2. ACTIONS
+    // 2. Handlers
     const handleAddTask = async (e) => {
         if (e.key === 'Enter' && newTask.trim()) {
-            await TaskService.addTask(user.uid, newTask, newPriority); // Kirim prioritas
+            playSound('pop'); // [NEW] Suara ketik/pop halus
+            await TaskService.addTask(user.uid, newTask, newPriority);
             setNewTask('');
             setNewPriority('normal');
             toast.success("Masuk Inbox");
         }
     };
 
-    const completeTask = async (id, text) => {
-        await TaskService.completeTask(user.uid, id, text);
-        toast.success("Task Selesai! +10 XP");
+    // [NEW] Selection Logic
+    const toggleSelection = (id) => {
+        const newSet = new Set(selectedTasks);
+        if (newSet.has(id)) newSet.delete(id);
+        else newSet.add(id);
+        setSelectedTasks(newSet);
+        if (newSet.size > 0) setIsSelectionMode(true);
+        else setIsSelectionMode(false);
     };
 
-    const deleteTask = async (id) => {
-        if(confirm("Hapus task ini?")) {
-            await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'tasks', id));
-            toast.success("Dihapus");
-        }
+    const clearSelection = () => {
+        setSelectedTasks(new Set());
+        setIsSelectionMode(false);
     };
 
-    // [INTEGRASI] Pindah ke Project
-    const moveToProject = async (taskId, projectId, projectName) => {
-        await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'tasks', taskId), {
-            projectId: projectId // Ini akan membuang task dari Inbox (karena filter di atas)
+    // [NEW] Bulk Actions
+    const handleBulkDelete = async () => {
+        if (!confirm(`Hapus ${selectedTasks.size} task?`)) return;
+        const batch = writeBatch(db);
+        selectedTasks.forEach(id => {
+            const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'tasks', id);
+            batch.delete(ref);
         });
-        setShowProjectMenu(null);
-        toast.success(`Dipindah ke ${projectName}`, { icon: '📂' });
+        await batch.commit();
+        playSound('trash');
+        toast.success(`${selectedTasks.size} task dihapus`);
+        clearSelection();
     };
 
-    const togglePriority = async (task) => {
-        const nextMap = { 'normal': 'high', 'high': 'low', 'low': 'normal' };
-        const next = nextMap[task.priority || 'normal'];
-        await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'tasks', task.id), { priority: next });
+    const handleBulkMove = async (projectId) => {
+        const batch = writeBatch(db);
+        selectedTasks.forEach(id => {
+            const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'tasks', id);
+            batch.update(ref, { projectId });
+        });
+        await batch.commit();
+        playSound('pop');
+        toast.success(`${selectedTasks.size} task dipindahkan`);
+        clearSelection();
+    };
+
+    // Single Actions
+    const completeTask = async (id, text) => {
+        if (isSelectionMode) return toggleSelection(id); // Jika mode seleksi, klik = select
+        playSound('complete');
+        await TaskService.completeTask(user.uid, id, text);
+        toast.success("Selesai! +10 XP");
     };
 
     const handleEditSave = async (id, newText) => {
@@ -99,130 +111,121 @@ export default function InboxWidget() {
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
                     <span className="material-symbols-rounded text-blue-400">inbox</span> Inbox
                 </h3>
-                <span className="bg-slate-800 text-slate-400 text-xs px-2 py-1 rounded-lg font-mono">
-                    {tasks.length}
-                </span>
+                
+                {isSelectionMode ? (
+                    <button onClick={clearSelection} className="text-xs text-rose-400 font-bold hover:underline">
+                        Batal ({selectedTasks.size})
+                    </button>
+                ) : (
+                    <span className="bg-slate-800 text-slate-400 text-xs px-2 py-1 rounded-lg font-mono">
+                        {tasks.length}
+                    </span>
+                )}
             </div>
             
-            {/* Input Bar (UI Diperjelas) */}
-            <div className="flex items-center gap-2 mb-4 bg-slate-950/80 p-2 rounded-xl border border-slate-700/50 focus-within:border-blue-500/50 focus-within:ring-1 focus-within:ring-blue-500/20 transition-all shadow-inner">
-                {/* Priority Toggle di Input */}
+            {/* Input Bar */}
+            <div className="flex items-center gap-2 mb-4 bg-slate-950/80 p-2 rounded-xl border border-slate-700/50 focus-within:border-blue-500/50 transition-all shadow-inner">
                 <button 
                     onClick={() => setNewPriority(p => p === 'high' ? 'normal' : 'high')}
                     className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${newPriority === 'high' ? 'text-rose-400 bg-rose-500/10' : 'text-slate-500 hover:text-white'}`}
-                    title="Set Prioritas Tinggi"
                 >
-                    <span className="material-symbols-rounded text-lg">
-                        {newPriority === 'high' ? 'priority_high' : 'radio_button_unchecked'}
-                    </span>
+                    <span className="material-symbols-rounded text-lg">{newPriority === 'high' ? 'priority_high' : 'radio_button_unchecked'}</span>
                 </button>
-                
                 <input 
-                    type="text" 
-                    value={newTask} 
-                    onChange={e => setNewTask(e.target.value)} 
-                    onKeyDown={handleAddTask}
-                    placeholder="Ada ide apa? (Enter)..." 
-                    className="bg-transparent w-full text-sm text-white placeholder-slate-500 focus:outline-none"
+                    value={newTask} onChange={e => setNewTask(e.target.value)} onKeyDown={handleAddTask}
+                    placeholder="Ada ide apa? (Enter)..." className="bg-transparent w-full text-sm text-white placeholder-slate-500 focus:outline-none"
                 />
-                <span className="text-[10px] text-slate-600 bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded mr-1">↵</span>
+                <span className="text-[10px] text-slate-600 border border-slate-700 px-1.5 py-0.5 rounded mr-1">↵</span>
             </div>
 
             {/* List Tasks */}
-            <div className="flex-1 overflow-y-auto custom-scroll space-y-2 pr-1 -mr-2">
-                {tasks.map(t => (
-                    <div key={t.id} className="group flex items-center gap-3 w-full p-3 rounded-xl hover:bg-slate-800/50 transition-all border border-transparent hover:border-slate-700/50 relative">
-                        
-                        {/* Checkbox */}
-                        <button onClick={() => completeTask(t.id, t.text)} className="w-5 h-5 rounded-full border-2 border-slate-600 hover:border-blue-500 flex items-center justify-center transition-all group/check flex-shrink-0">
-                            <span className="material-symbols-rounded text-[10px] text-transparent group-hover/check:text-blue-400 scale-0 group-hover/check:scale-100 transition-transform">check</span>
-                        </button>
-                        
-                        {/* Content (Editable) */}
-                        <div className="flex-1 min-w-0">
-                            {editingTask === t.id ? (
-                                <input 
-                                    autoFocus
-                                    className="w-full bg-slate-950 text-white text-sm px-2 py-1 rounded border border-blue-500 outline-none"
-                                    defaultValue={t.text}
-                                    onKeyDown={(e) => e.key === 'Enter' && handleEditSave(t.id, e.target.value)}
-                                    onBlur={(e) => handleEditSave(t.id, e.target.value)}
-                                />
-                            ) : (
-                                <div className="flex items-center gap-2">
-                                    {/* Priority Indicator */}
-                                    {t.priority === 'high' && (
-                                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shrink-0"></span>
-                                    )}
-                                    <p 
-                                        onClick={() => setEditingTask(t.id)} 
-                                        className={`text-sm transition-colors truncate cursor-text ${t.priority === 'high' ? 'text-white font-medium' : 'text-slate-300 group-hover:text-white'}`}
-                                    >
-                                        {t.text}
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Action Buttons (Hover Only) */}
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            
-                            {/* Priority Toggle */}
-                            <button onClick={() => togglePriority(t)} className={`p-1.5 rounded-lg ${t.priority === 'high' ? 'text-rose-400' : 'text-slate-500 hover:text-orange-400'}`}>
-                                <span className="material-symbols-rounded text-sm">flag</span>
+            <div className="flex-1 overflow-y-auto custom-scroll space-y-2 pr-1 -mr-2 pb-16">
+                {tasks.map(t => {
+                    const isSelected = selectedTasks.has(t.id);
+                    return (
+                        <div 
+                            key={t.id} 
+                            onClick={() => isSelectionMode && toggleSelection(t.id)}
+                            className={`group flex items-center gap-3 w-full p-3 rounded-xl transition-all border relative cursor-pointer
+                                ${isSelected ? 'bg-blue-900/20 border-blue-500/50' : 'hover:bg-slate-800/50 border-transparent hover:border-slate-700/50'}
+                            `}
+                        >
+                            {/* Checkbox (Contextual: Select or Complete) */}
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); isSelectionMode ? toggleSelection(t.id) : completeTask(t.id, t.text); }} 
+                                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0
+                                    ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-slate-600 hover:border-blue-500'}
+                                `}
+                            >
+                                {isSelected ? (
+                                    <span className="material-symbols-rounded text-xs text-white">check</span>
+                                ) : (
+                                    <span className="material-symbols-rounded text-[10px] text-transparent group-hover:text-blue-400">check</span>
+                                )}
                             </button>
-
-                            {/* Move to Project (Integration) */}
-                            <div className="relative">
-                                <button 
-                                    onClick={() => setShowProjectMenu(showProjectMenu === t.id ? null : t.id)}
-                                    className="p-1.5 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all"
-                                    title="Pindahkan ke Project"
-                                >
-                                    <span className="material-symbols-rounded text-sm">drive_file_move</span>
-                                </button>
-
-                                {/* Dropdown Menu Project */}
-                                {showProjectMenu === t.id && (
-                                    <div className="absolute right-0 top-8 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden animate-enter">
-                                        <div className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase border-b border-slate-800">Pindah ke...</div>
-                                        <div className="max-h-40 overflow-y-auto custom-scroll">
-                                            {projects.length > 0 ? projects.map(p => (
-                                                <button 
-                                                    key={p.id}
-                                                    onClick={() => moveToProject(t.id, p.id, p.name)}
-                                                    className="w-full text-left px-3 py-2 text-xs text-slate-300 hover:bg-slate-800 hover:text-white truncate transition-colors"
-                                                >
-                                                    {p.name}
-                                                </button>
-                                            )) : (
-                                                <div className="px-3 py-2 text-xs text-slate-600 italic">Belum ada project</div>
-                                            )}
-                                        </div>
+                            
+                            {/* Content */}
+                            <div className="flex-1 min-w-0">
+                                {editingTask === t.id ? (
+                                    <input 
+                                        autoFocus
+                                        className="w-full bg-slate-950 text-white text-sm px-2 py-1 rounded border border-blue-500 outline-none"
+                                        defaultValue={t.text}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleEditSave(t.id, e.target.value)}
+                                        onBlur={(e) => handleEditSave(t.id, e.target.value)}
+                                        onClick={e => e.stopPropagation()}
+                                    />
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        {t.priority === 'high' && <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shrink-0"></span>}
+                                        <p 
+                                            onDoubleClick={() => !isSelectionMode && setEditingTask(t.id)} // [UX] Double click to edit
+                                            className={`text-sm truncate ${t.priority === 'high' ? 'text-rose-300 font-medium' : 'text-slate-300'}`}
+                                        >
+                                            {t.text}
+                                        </p>
                                     </div>
                                 )}
                             </div>
 
-                            {/* Delete */}
-                            <button onClick={() => deleteTask(t.id)} className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-all">
-                                <span className="material-symbols-rounded text-sm">delete</span>
-                            </button>
+                            {/* Hover Actions (Hidden in Selection Mode) */}
+                            {!isSelectionMode && (
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onClick={(e) => { e.stopPropagation(); toggleSelection(t.id); }} className="p-1.5 text-slate-500 hover:text-white rounded-lg" title="Pilih">
+                                        <span className="material-symbols-rounded text-sm">check_box_outline_blank</span>
+                                    </button>
+                                </div>
+                            )}
                         </div>
-                    </div>
-                ))}
-                
-                {/* Empty State */}
-                {tasks.length === 0 && (
-                    <div className="flex flex-col items-center justify-center h-40 text-slate-600 opacity-60">
-                        <span className="material-symbols-rounded text-4xl mb-2">inbox_customize</span>
-                        <p className="text-xs">Inbox Kosong (Zen Mode)</p>
-                    </div>
-                )}
+                    );
+                })}
             </div>
 
-            {/* Click Outside Handler untuk Dropdown */}
-            {showProjectMenu && (
-                <div className="fixed inset-0 z-40" onClick={() => setShowProjectMenu(null)}></div>
+            {/* [NEW] FLOATING ACTION BAR (Bulk Actions) */}
+            {isSelectionMode && (
+                <div className="absolute bottom-4 left-4 right-4 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-2 flex items-center justify-between animate-in slide-in-from-bottom-4 z-20">
+                    <span className="text-xs font-bold text-white ml-3">{selectedTasks.size} Terpilih</span>
+                    <div className="flex gap-1">
+                        <div className="relative group/proj">
+                            <button className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-blue-400 transition-colors" title="Pindah ke Project">
+                                <span className="material-symbols-rounded text-lg">drive_file_move</span>
+                            </button>
+                            {/* Simple Dropdown for Bulk Move */}
+                            <div className="absolute bottom-full right-0 mb-2 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-xl hidden group-hover/proj:block">
+                                <div className="max-h-40 overflow-y-auto custom-scroll p-1">
+                                    {projects.map(p => (
+                                        <button key={p.id} onClick={() => handleBulkMove(p.id)} className="w-full text-left px-3 py-2 text-xs text-slate-300 hover:bg-slate-800 rounded-lg truncate">
+                                            {p.name}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                        <button onClick={handleBulkDelete} className="p-2 hover:bg-rose-500/10 rounded-lg text-slate-400 hover:text-rose-400 transition-colors" title="Hapus Semua">
+                            <span className="material-symbols-rounded text-lg">delete</span>
+                        </button>
+                    </div>
+                </div>
             )}
         </div>
     );

@@ -7,15 +7,30 @@ export default function MobileNav() {
     const pathname = usePathname();
     const [showMenu, setShowMenu] = useState(false);
 
-    // Helper: Nav Item (Bottom Bar)
+    // 3. OPTIMIZED MOBILE NAV ITEM
     const NavItem = ({ href, icon, label }) => {
-        // Logic active: Exact match atau startsWith (kecuali root/dashboard agar tidak overlapping)
         const isActive = pathname === href || (pathname.startsWith(href) && href !== '/dashboard');
         
         return (
-            <Link href={href} className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all w-16 ${isActive ? 'text-blue-500 scale-110' : 'text-slate-500 hover:text-slate-300'}`}>
-                <span className="material-symbols-rounded text-2xl">{icon}</span>
-                <span className="text-[9px] font-bold">{label}</span>
+            <Link 
+                href={href} 
+                className={`
+                    relative flex items-center justify-center w-14 h-14 rounded-2xl transition-all duration-300
+                    ${isActive 
+                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30 -translate-y-2' 
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                    }
+                `}
+                aria-label={label} // Tetap aksesibel untuk screen reader
+            >
+                <span className={`material-symbols-rounded text-2xl ${isActive ? 'scale-110' : ''}`}>
+                    {icon}
+                </span>
+                
+                {/* Indikator aktif titik kecil di bawah (Opsional, pengganti teks) */}
+                {isActive && (
+                    <span className="absolute -bottom-2 w-1 h-1 rounded-full bg-blue-500"></span>
+                )}
             </Link>
         );
     };

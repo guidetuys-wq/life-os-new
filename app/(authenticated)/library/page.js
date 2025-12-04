@@ -1,8 +1,8 @@
 'use client';
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { LibraryService } from '@/services/libraryService'; // [NEW]
-import { GoalService } from '@/services/goalService';       // [NEW] Reuse Goal Service
+import { LibraryService } from '@/services/libraryService';
+import { GoalService } from '@/services/goalService';       
 import toast from 'react-hot-toast';
 
 // Import UI Premium
@@ -18,7 +18,7 @@ export default function LibraryPage() {
     
     // UI/Filter States
     const [searchQuery, setSearchQuery] = useState('');
-    const [filterType, setFilterType] = useState('All'); // All, book, movie, course...
+    const [filterType, setFilterType] = useState('All'); 
     const [showModal, setShowModal] = useState(false);
     
     // Form State
@@ -39,7 +39,6 @@ export default function LibraryPage() {
         const unsubLibrary = LibraryService.subscribeLibrary(user.uid, setItems);
 
         // Subscribe Goals (untuk Dropdown Link)
-        // Pastikan GoalService.subscribeGoals tersedia
         let unsubGoals = () => {};
         if (GoalService && typeof GoalService.subscribeGoals === 'function') {
              unsubGoals = GoalService.subscribeGoals(user.uid, setGoals);
@@ -83,25 +82,28 @@ export default function LibraryPage() {
     };
 
     const updateRating = (item, newRating) => {
-        LibraryService.updateItem(user.uid, item.id, { rating: newRating });
+        // Jika rating sama, jadikan 0 (toggle off)
+        const ratingValue = item.rating === newRating ? 0 : newRating;
+        LibraryService.updateItem(user.uid, item.id, { rating: ratingValue });
     };
 
     // Helper: UI Configs
     const getTypeInfo = (type) => {
         const map = {
-            book: { icon: 'menu_book', color: 'text-blue-400 bg-blue-400/10 border-blue-400/20', label: 'Buku' },
-            movie: { icon: 'movie', color: 'text-rose-400 bg-rose-400/10 border-rose-400/20', label: 'Film' },
-            course: { icon: 'school', color: 'text-amber-400 bg-amber-400/10 border-amber-400/20', label: 'Kursus' },
-            article: { icon: 'article', color: 'text-slate-400 bg-slate-400/10 border-slate-400/20', label: 'Artikel' }
+            // [REFINED COLORS] Menggunakan border yang lebih subtle (/30)
+            book: { icon: 'menu_book', color: 'text-blue-400 bg-blue-400/10 border-blue-400/30', label: 'Buku' },
+            movie: { icon: 'movie', color: 'text-rose-400 bg-rose-400/10 border-rose-400/30', label: 'Film' },
+            course: { icon: 'school', color: 'text-amber-400 bg-amber-400/10 border-amber-400/30', label: 'Kursus' },
+            article: { icon: 'article', color: 'text-slate-400 bg-slate-400/10 border-slate-400/30', label: 'Artikel' }
         };
         return map[type] || map.book;
     };
 
     const getStatusBadge = (status) => {
         switch(status) {
-            case 'active': return { class: 'bg-blue-500 text-white animate-pulse', label: 'Sedang Proses' };
-            case 'done': return { class: 'bg-emerald-500 text-white', label: 'Selesai' };
-            default: return { class: 'bg-slate-700 text-slate-400', label: 'Antrean' };
+            case 'active': return { class: 'bg-blue-600/50 text-white animate-pulse-slow', label: 'Sedang Proses' };
+            case 'done': return { class: 'bg-emerald-600/50 text-white', label: 'Selesai' };
+            default: return { class: 'bg-slate-700/50 text-slate-400', label: 'Antrean' };
         }
     };
 
@@ -111,7 +113,7 @@ export default function LibraryPage() {
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-white mb-1">Library</h1>
+                    <h1 className="text-3xl font-bold text-white mb-1 tracking-tight">Library</h1>
                     <p className="text-sm text-slate-400">Koleksi pengetahuan dan hiburanmu.</p>
                 </div>
                 
@@ -137,12 +139,12 @@ export default function LibraryPage() {
             </div>
 
             {/* Filter Tabs */}
-            <div className="flex gap-2 overflow-x-auto pb-4 mb-2 no-scrollbar">
+            <div className="flex gap-2 overflow-x-auto pb-4 mb-4 no-scrollbar">
                 {['All', 'book', 'course', 'movie', 'article'].map(type => (
                     <button
                         key={type}
                         onClick={() => setFilterType(type)}
-                        className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border capitalize ${
+                        className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all border capitalize ${
                             filterType === type 
                             ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20' 
                             : 'bg-slate-800/50 text-slate-400 border-slate-700 hover:bg-slate-800 hover:text-white'
@@ -161,12 +163,13 @@ export default function LibraryPage() {
                     const linkedGoal = goals.find(g => g.id === item.goalId);
 
                     return (
-                        <div key={item.id} className="card-enhanced p-5 flex flex-col justify-between group h-full">
+                        // [REFINED] Use glass-card
+                        <div key={item.id} className="glass-card p-5 flex flex-col justify-between group h-full">
                             
                             {/* Top Info */}
                             <div className="flex justify-between items-start mb-3">
-                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${info.color}`}>
-                                    <span className="material-symbols-rounded text-sm">{info.icon}</span> {info.label}
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${info.color}`}>
+                                    <span className="material-symbols-rounded text-sm filled-icon">{info.icon}</span> {info.label}
                                 </span>
                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <button onClick={() => handleDelete(item.id)} className="text-slate-600 hover:text-rose-400 p-1 rounded hover:bg-rose-500/10 transition-colors">
@@ -181,18 +184,33 @@ export default function LibraryPage() {
                                     {item.title}
                                 </h4>
                                 {linkedGoal && (
-                                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400 bg-slate-950/50 px-2 py-1 rounded w-fit border border-slate-800/50">
+                                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400 bg-slate-950/50 px-2 py-1 rounded-full w-fit border border-slate-800/50 mt-1">
                                         <span className="material-symbols-rounded text-xs text-orange-400">flag</span>
-                                        <span>{linkedGoal.title}</span>
+                                        <span className="truncate max-w-[100px]">{linkedGoal.title}</span>
                                     </div>
                                 )}
                             </div>
 
-                            {/* Actions */}
+                            {/* Actions & Footer */}
                             <div className="space-y-3 pt-3 border-t border-slate-700/30">
+                                
+                                {/* Rating (Interactive in Card) */}
+                                <div className="flex items-center justify-center gap-1 bg-slate-900/50 py-1.5 rounded-lg border border-slate-800">
+                                    {[1, 2, 3, 4, 5].map((star) => (
+                                        <button 
+                                            key={star}
+                                            onClick={() => updateRating(item, star)}
+                                            className={`text-sm transition-transform hover:scale-125 ${star <= item.rating ? 'text-amber-400' : 'text-slate-700'}`}
+                                            title={`Beri rating ${star} bintang`}
+                                        >
+                                            <span className="material-symbols-rounded filled-icon">{star <= item.rating ? 'star' : 'star'}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                                
                                 {/* Status Control */}
                                 <div className="flex items-center justify-between">
-                                    <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${statusInfo.class}`}>
+                                    <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${statusInfo.class}`}>
                                         {statusInfo.label}
                                     </span>
                                     
@@ -201,26 +219,11 @@ export default function LibraryPage() {
                                         onChange={(e) => updateStatus(item, e.target.value)}
                                         className="bg-transparent text-[10px] text-slate-400 border border-slate-700 rounded px-1 py-0.5 outline-none hover:border-slate-500 cursor-pointer"
                                     >
-                                        <option className="bg-slate-900" value="queue">Queue</option>
+                                        <option className="bg-slate-900" value="queue">Antrean</option>
                                         <option className="bg-slate-900" value="active">Active</option>
-                                        <option className="bg-slate-900" value="done">Done</option>
+                                        <option className="bg-slate-900" value="done">Selesai</option>
                                     </select>
                                 </div>
-
-                                {/* Rating (Interactive) */}
-                                {(item.status === 'done' || item.rating > 0) && (
-                                    <div className="flex items-center justify-center gap-1 bg-slate-900/50 py-1.5 rounded-lg border border-slate-800">
-                                        {[1, 2, 3, 4, 5].map((star) => (
-                                            <button 
-                                                key={star}
-                                                onClick={() => updateRating(item, star)}
-                                                className={`text-sm transition-transform hover:scale-125 ${star <= item.rating ? 'text-amber-400' : 'text-slate-700'}`}
-                                            >
-                                                <span className="material-symbols-rounded filled-icon">star</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
                             </div>
                         </div>
                     );
@@ -235,7 +238,7 @@ export default function LibraryPage() {
                 </div>
             )}
 
-            {/* MODAL */}
+            {/* MODAL (Refined Rating Input) */}
             {showModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-enter">
                     <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg p-6 relative shadow-2xl">
@@ -291,7 +294,7 @@ export default function LibraryPage() {
                                 ))}
                             </Select>
 
-                            {/* Rating Input */}
+                            {/* Rating Input (FIXED) */}
                             {formData.status === 'done' && (
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">Rating</label>
@@ -302,7 +305,7 @@ export default function LibraryPage() {
                                                 onClick={() => setFormData({...formData, rating: star})}
                                                 className={`text-2xl transition-transform hover:scale-110 ${star <= formData.rating ? 'text-amber-400' : 'text-slate-700'}`}
                                             >
-                                                ⭐
+                                                <span className="material-symbols-rounded filled-icon">star</span>
                                             </button>
                                         ))}
                                     </div>

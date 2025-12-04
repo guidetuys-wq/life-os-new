@@ -1,4 +1,5 @@
-// hooks/useDashboardData.js
+// hooks/useDashboardData.js (FIXED - No Infinite Loop)
+
 import { useState, useEffect } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db, appId } from '@/lib/firebase';
@@ -12,56 +13,83 @@ export function useDashboardData(user) {
     const [stats, setStats] = useState({ xp: 0, level: 1 });
     const [finance, setFinance] = useState({ balance: 0 });
     const [activeTasks, setActiveTasks] = useState([]);
-    
-    // [NEW] Daftar semua project aktif yang bisa dipilih user
     const [projectCandidates, setProjectCandidates] = useState([]);
     
     const [identityData, setIdentityData] = useState({ 
         statement: '', 
         anchor: '', 
-        focus: { slot1: '', slot2: '', slot3: '' } // Menyimpan ID project yang dipilih
+        focus: { slot1: '', slot2: '', slot3: '' }
     });
 
+    // ✅ FIX: Separate effect for data subscriptions
     useEffect(() => {
-        if (!user) return;
+        if (!user) {
+            setIsLoading(false);
+            return;
+        }
 
         setIsLoading(true);
 
         // 1. Profile Stats
-        const unsubStats = onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'stats', 'profile'), (d) => {
-            if (d.exists()) setStats(d.data());
-        });
+        const unsubStats = onSnapshot(
+            doc(db, 'artifacts', appId, 'users', user.uid, 'stats', 'profile'),
+            (d) => {
+                if (d.exists()) setStats(d.data());
+            },
+            (error) => {
+                console.error('Error loading stats:', error);
+            }
+        );
 
         // 2. Finance
-        const unsubFinance = FinanceService.subscribeStats(user.uid, setFinance);
+        const unsubFinance = FinanceService.subscribeStats(user.uid, (data) => {
+            setFinance(data || { balance: 0 });
+        });
 
-        // 3. Identity & Fokus
+        // 3. Identity & Focus
         const unsubIdentity = IdentityService.subscribeIdentity(user.uid, (data) => {
             setIdentityData({
-                statement: data.statement || 'Aku adalah orang yang selalu kembali ke sistemku sendiri.',
-                anchor: data.anchor || 'Kembali lebih penting dari kemajuan.',
-                focus: data.focus || { slot1: '', slot2: '', slot3: '' }
+                statement: data?.statement || 'Aku adalah orang yang selalu kembali ke sistemku sendiri.',
+                anchor: data?.anchor || 'Kembali lebih penting dari kemajuan.',
+                focus: data?.focus || { slot1: '', slot2: '', slot3: '' }
             });
         });
 
         // 4. Tasks
-        const unsubTasks = TaskService.subscribeToActiveTasks(user.uid, setActiveTasks);
+        const unsubTasks = TaskService.subscribeToActiveTasks(user.uid, (tasks) => {
+            setActiveTasks(tasks || []);
+        });
 
-        // 5. Projects (Ambil SEMUA yang aktif untuk pilihan)
-        const unsubProjects = ProjectService.subscribeActiveProjects(user.uid, setProjectCandidates);
+        // 5. Projects (All active for selection)
+        const unsubProjects = ProjectService.subscribeActiveProjects(user.uid, (projects) => {
+            setProjectCandidates(projects || []);
+        });
 
         const timer = setTimeout(() => setIsLoading(false), 500);
 
         return () => {
-            unsubStats(); unsubFinance(); unsubIdentity();
-            unsubTasks(); unsubProjects();
+            unsubStats();
+            unsubFinance();
+            unsubIdentity();
+            unsubTasks();
+            unsubProjects();
             clearTimeout(timer);
         };
-    }, [user]);
+    }, [user]); // ✅ ONLY user dependency, no identityData.focus!
+
+    // ✅ Computed value for active projects (no effect needed)
+    const activeProjects = projectCandidates.filter(p => 
+        Object.values(identityData.focus || {}).includes(p.id)
+    );
 
     return { 
-        isLoading, stats, finance, activeTasks, 
-        projectCandidates, // List project untuk dropdown
-        identityData, setIdentityData 
+        isLoading,
+        stats,
+        finance,
+        activeTasks,
+        activeProjects, // ✅ Now computed, not state
+        projectCandidates,
+        identityData,
+        setIdentityData
     };
 }

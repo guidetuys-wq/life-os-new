@@ -1,32 +1,21 @@
 'use client';
-import { useMemo, memo } from 'react';
+import { useMemo, memo, useRef } from 'react'; // [NEW] useRef
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
-import { Doughnut } from 'react-chartjs-2';
+import { Doughnut, getElementAtEvent } from 'react-chartjs-2'; // [NEW] getElementAtEvent
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-// Palet warna yang sesuai dengan tema Dark Mode (Slate-950)
 const PALETTE = [
-    '#f43f5e', // Rose-500
-    '#3b82f6', // Blue-500
-    '#10b981', // Emerald-500
-    '#f59e0b', // Amber-500
-    '#8b5cf6', // Violet-500
-    '#06b6d4', // Cyan-500
-    '#ec4899', // Pink-500
-    '#6366f1', // Indigo-500
-    '#84cc16', // Lime-500
-    '#64748b', // Slate-500
+    '#f43f5e', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', 
+    '#06b6d4', '#ec4899', '#6366f1', '#84cc16', '#64748b',
 ];
 
-const FinanceChart = ({ transactions }) => {
-    
-    // 1. Data Transformation (Memoized)
-    const { chartData, totalExpense } = useMemo(() => {
-        // Filter Expense sekali saja
+// [UPDATE] Terima props onCategoryClick
+const FinanceChart = ({ transactions, onCategoryClick }) => {
+    const chartRef = useRef(null); // [NEW] Ref untuk akses instance chart
+
+    const { chartData, totalExpense, categories } = useMemo(() => {
         const expenses = transactions.filter(t => t.type === 'expense');
-        
-        // Grouping
         const categoryTotals = {};
         let total = 0;
 
@@ -37,50 +26,42 @@ const FinanceChart = ({ transactions }) => {
             total += amount;
         });
 
-        // Sorting: Kategori terbesar di awal
-        const sortedCategories = Object.entries(categoryTotals)
-            .sort(([, a], [, b]) => b - a);
-
-        const labels = sortedCategories.map(([name]) => name);
-        const data = sortedCategories.map(([, amount]) => amount);
-        
-        // Warna dinamis (Cycle through palette)
+        const sorted = Object.entries(categoryTotals).sort(([, a], [, b]) => b - a);
+        const labels = sorted.map(([name]) => name);
+        const data = sorted.map(([, amount]) => amount);
         const backgroundColor = labels.map((_, i) => PALETTE[i % PALETTE.length]);
 
         return {
             totalExpense: total,
+            categories: labels, // Simpan urutan kategori untuk mapping klik
             chartData: {
                 labels,
                 datasets: [{
                     label: 'Pengeluaran',
                     data,
                     backgroundColor,
-                    borderColor: 'rgba(15, 23, 42, 1)', // Slate-950 (Background App)
+                    borderColor: 'rgba(15, 23, 42, 1)',
                     borderWidth: 2,
-                    hoverOffset: 4
+                    hoverOffset: 8 // Efek hover lebih besar
                 }],
             }
         };
     }, [transactions]);
 
-    // 2. Opsi Chart (Memoized static)
     const options = useMemo(() => ({
         plugins: {
-            legend: {
-                position: 'right',
-                labels: {
-                    color: '#94a3b8', // Slate-400
-                    font: { family: 'Inter', size: 10 },
-                    usePointStyle: true,
-                    boxWidth: 6
-                }
+            legend: { 
+                position: 'right', 
+                labels: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans', size: 11 }, usePointStyle: true, boxWidth: 6 } 
             },
             tooltip: {
-                backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                backgroundColor: 'rgba(15, 23, 42, 0.95)',
                 titleColor: '#fff',
                 bodyColor: '#cbd5e1',
-                padding: 10,
-                cornerRadius: 8,
+                padding: 12,
+                cornerRadius: 12,
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.1)',
                 callbacks: {
                     label: (context) => {
                         const value = context.raw;
@@ -90,31 +71,42 @@ const FinanceChart = ({ transactions }) => {
                 }
             }
         },
-        cutout: '75%', // Lebih tipis agar terlihat modern
+        cutout: '75%',
         responsive: true,
         maintainAspectRatio: false,
-        animation: { duration: 500 }
-    }), [totalExpense]);
+        onClick: (event) => {
+            // [NEW] Logic Click Handler
+            if (!chartRef.current) return;
+            const elements = getElementAtEvent(chartRef.current, event);
+            
+            if (elements.length > 0) {
+                const index = elements[0].index;
+                const category = categories[index];
+                if (onCategoryClick) onCategoryClick(category);
+            } else {
+                // Klik di luar donat = Reset filter
+                if (onCategoryClick) onCategoryClick(null);
+            }
+        }
+    }), [totalExpense, categories, onCategoryClick]);
 
-    // 3. Render Empty State
     if (totalExpense === 0) {
         return (
             <div className="h-40 flex flex-col items-center justify-center text-slate-600 opacity-60">
                 <span className="material-symbols-rounded text-3xl mb-1">data_usage</span>
-                <span className="text-[10px] italic">Belum ada pengeluaran</span>
+                <span className="text-[10px] italic">Belum ada data</span>
             </div>
         );
     }
 
     return (
-        <div className="h-40 relative group cursor-default">
-            <Doughnut data={chartData} options={options} />
+        <div className="h-40 relative group cursor-pointer">
+            <Doughnut ref={chartRef} data={chartData} options={options} />
             
-            {/* Center Text (Total / Icon) */}
+            {/* Center Text */}
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold opacity-50">Total</span>
-                <span className="text-xs font-mono font-bold text-white opacity-80 group-hover:text-blue-400 transition-colors">
-                    {/* Format Short: 2.5jt */}
+                <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold opacity-60">Total Expense</span>
+                <span className="text-xs font-mono font-bold text-white group-hover:text-blue-400 transition-colors">
                     {new Intl.NumberFormat('id-ID', { notation: "compact", compactDisplay: "short" }).format(totalExpense)}
                 </span>
             </div>
@@ -122,5 +114,4 @@ const FinanceChart = ({ transactions }) => {
     );
 };
 
-// Bungkus memo agar tidak re-render jika parent update tapi transactions sama
 export default memo(FinanceChart);
