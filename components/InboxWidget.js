@@ -6,6 +6,7 @@ import { db, appId } from '@/lib/firebase';
 import { TaskService } from '@/services/taskService';
 import toast from 'react-hot-toast';
 import { playSound } from '@/lib/sounds';
+import SwipeableItem from '@/components/ui/SwipeableItem'; // [NEW] Import
 
 export default function InboxWidget() {
     const { user } = useAuth();
@@ -18,7 +19,7 @@ export default function InboxWidget() {
     
     // UI States
     const [editingTask, setEditingTask] = useState(null); 
-    const [selectedTasks, setSelectedTasks] = useState(new Set()); // [NEW] Set of IDs
+    const [selectedTasks, setSelectedTasks] = useState(new Set());
     const [isSelectionMode, setIsSelectionMode] = useState(false);
 
     // 1. Fetch Data
@@ -37,10 +38,10 @@ export default function InboxWidget() {
         return () => unsubTasks();
     }, [user]);
 
-    // 2. Handlers
+    // 2. Actions
     const handleAddTask = async (e) => {
         if (e.key === 'Enter' && newTask.trim()) {
-            playSound('pop'); // [NEW] Suara ketik/pop halus
+            playSound('pop');
             await TaskService.addTask(user.uid, newTask, newPriority);
             setNewTask('');
             setNewPriority('normal');
@@ -48,7 +49,6 @@ export default function InboxWidget() {
         }
     };
 
-    // [NEW] Selection Logic
     const toggleSelection = (id) => {
         const newSet = new Set(selectedTasks);
         if (newSet.has(id)) newSet.delete(id);
@@ -63,7 +63,6 @@ export default function InboxWidget() {
         setIsSelectionMode(false);
     };
 
-    // [NEW] Bulk Actions
     const handleBulkDelete = async () => {
         if (!confirm(`Hapus ${selectedTasks.size} task?`)) return;
         const batch = writeBatch(db);
@@ -89,12 +88,18 @@ export default function InboxWidget() {
         clearSelection();
     };
 
-    // Single Actions
     const completeTask = async (id, text) => {
-        if (isSelectionMode) return toggleSelection(id); // Jika mode seleksi, klik = select
+        if (isSelectionMode) return toggleSelection(id);
         playSound('complete');
         await TaskService.completeTask(user.uid, id, text);
         toast.success("Selesai! +10 XP");
+    };
+
+    const deleteTask = async (id) => {
+        if(confirm("Hapus task ini?")) {
+            await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'tasks', id));
+            toast.success("Dihapus");
+        }
     };
 
     const handleEditSave = async (id, newText) => {
@@ -104,14 +109,14 @@ export default function InboxWidget() {
     };
 
     return (
-        <div className="glass-card flex flex-col h-full min-h-[400px] p-6 relative group border border-white/5">
+        // [FIX] p-4 di mobile (sebelumnya p-6), min-h dikurangi agar tidak terlalu panjang kosongnya
+        <div className="glass-card flex flex-col h-full min-h-[350px] p-4 md:p-6 relative group border border-white/5">
             
             {/* Header */}
             <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
                     <span className="material-symbols-rounded text-blue-400">inbox</span> Inbox
                 </h3>
-                
                 {isSelectionMode ? (
                     <button onClick={clearSelection} className="text-xs text-rose-400 font-bold hover:underline">
                         Batal ({selectedTasks.size})
@@ -123,7 +128,8 @@ export default function InboxWidget() {
                 )}
             </div>
             
-            {/* Input Bar */}
+            {/* ... Input Bar & List Tasks (Kode lainnya tetap sama) ... */}
+             {/* Input Bar */}
             <div className="flex items-center gap-2 mb-4 bg-slate-950/80 p-2 rounded-xl border border-slate-700/50 focus-within:border-blue-500/50 transition-all shadow-inner">
                 <button 
                     onClick={() => setNewPriority(p => p === 'high' ? 'normal' : 'high')}
@@ -138,19 +144,19 @@ export default function InboxWidget() {
                 <span className="text-[10px] text-slate-600 border border-slate-700 px-1.5 py-0.5 rounded mr-1">↵</span>
             </div>
 
-            {/* List Tasks */}
+            {/* List Tasks (Swipeable) */}
             <div className="flex-1 overflow-y-auto custom-scroll space-y-2 pr-1 -mr-2 pb-16">
                 {tasks.map(t => {
                     const isSelected = selectedTasks.has(t.id);
-                    return (
+                    
+                    // Konten Task (Reusable)
+                    const TaskContent = (
                         <div 
-                            key={t.id} 
                             onClick={() => isSelectionMode && toggleSelection(t.id)}
-                            className={`group flex items-center gap-3 w-full p-3 rounded-xl transition-all border relative cursor-pointer
+                            className={`group flex items-center gap-3 w-full p-3 transition-all border cursor-pointer h-full
                                 ${isSelected ? 'bg-blue-900/20 border-blue-500/50' : 'hover:bg-slate-800/50 border-transparent hover:border-slate-700/50'}
                             `}
                         >
-                            {/* Checkbox (Contextual: Select or Complete) */}
                             <button 
                                 onClick={(e) => { e.stopPropagation(); isSelectionMode ? toggleSelection(t.id) : completeTask(t.id, t.text); }} 
                                 className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0
@@ -164,7 +170,6 @@ export default function InboxWidget() {
                                 )}
                             </button>
                             
-                            {/* Content */}
                             <div className="flex-1 min-w-0">
                                 {editingTask === t.id ? (
                                     <input 
@@ -177,9 +182,11 @@ export default function InboxWidget() {
                                     />
                                 ) : (
                                     <div className="flex items-center gap-2">
-                                        {t.priority === 'high' && <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shrink-0"></span>}
+                                        {t.priority === 'high' && (
+                                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shrink-0"></span>
+                                        )}
                                         <p 
-                                            onDoubleClick={() => !isSelectionMode && setEditingTask(t.id)} // [UX] Double click to edit
+                                            onDoubleClick={() => !isSelectionMode && setEditingTask(t.id)} 
                                             className={`text-sm truncate ${t.priority === 'high' ? 'text-rose-300 font-medium' : 'text-slate-300'}`}
                                         >
                                             {t.text}
@@ -187,22 +194,31 @@ export default function InboxWidget() {
                                     </div>
                                 )}
                             </div>
-
-                            {/* Hover Actions (Hidden in Selection Mode) */}
-                            {!isSelectionMode && (
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={(e) => { e.stopPropagation(); toggleSelection(t.id); }} className="p-1.5 text-slate-500 hover:text-white rounded-lg" title="Pilih">
-                                        <span className="material-symbols-rounded text-sm">check_box_outline_blank</span>
-                                    </button>
-                                </div>
-                            )}
                         </div>
+                    );
+
+                    if (isSelectionMode) {
+                        return <div key={t.id} className="rounded-xl overflow-hidden border border-slate-800">{TaskContent}</div>;
+                    }
+
+                    return (
+                        <SwipeableItem 
+                            key={t.id}
+                            onSwipeRight={() => completeTask(t.id, t.text)}
+                            onSwipeLeft={() => deleteTask(t.id)}
+                            leftColor="bg-emerald-500" 
+                            rightColor="bg-rose-500"
+                            leftIcon="check" 
+                            rightIcon="delete"
+                        >
+                            {TaskContent}
+                        </SwipeableItem>
                     );
                 })}
             </div>
-
-            {/* [NEW] FLOATING ACTION BAR (Bulk Actions) */}
-            {isSelectionMode && (
+            
+            {/* Floating Action Bar (Sama) */}
+             {isSelectionMode && (
                 <div className="absolute bottom-4 left-4 right-4 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-2 flex items-center justify-between animate-in slide-in-from-bottom-4 z-20">
                     <span className="text-xs font-bold text-white ml-3">{selectedTasks.size} Terpilih</span>
                     <div className="flex gap-1">

@@ -26,11 +26,9 @@ export const SettingService = {
         const profileSnap = await getDoc(profileRef);
         const profileData = profileSnap.data() || { xp: 0, level: 1 };
 
-        // Hitung Total Tasks Completed
         const tasksRef = collection(db, 'artifacts', appId, USERS_COLLECTION, uid, 'tasks');
         const taskSnap = await getCountFromServer(query(tasksRef, where('completed', '==', true)));
 
-        // Hitung Total Focus Sessions
         const logsRef = collection(db, 'artifacts', appId, USERS_COLLECTION, uid, 'logs');
         const focusSnap = await getCountFromServer(query(logsRef, where('type', '==', 'FOCUS_DONE')));
 
@@ -41,20 +39,18 @@ export const SettingService = {
         };
     },
 
-    // 3. DANGER: Reset Account (Batch Delete)
+    // 3. DANGER: Reset Account (Total Wipe)
     resetAccount: async (uid) => {
         const batch = writeBatch(db);
         
-        // Daftar koleksi yang akan dibersihkan
+        // [UPDATE] Daftar lengkap koleksi untuk dibersihkan
         const collections = [
             'tasks', 'projects', 'goals', 'notes', 
             'library', 'transactions', 'habits', 
-            'categories', 'logs'
+            'categories', 'logs', 'wellness' // + Wellness
         ];
 
         // A. Hapus semua dokumen di setiap koleksi
-        // Note: Batch limit 500 ops. Jika data ribuan, perlu chunking. 
-        // Untuk skala personal use, ini aman.
         for (const colName of collections) {
             const ref = collection(db, 'artifacts', appId, USERS_COLLECTION, uid, colName);
             const snap = await getDocs(ref);
@@ -69,9 +65,13 @@ export const SettingService = {
 
         const financeStatsRef = doc(db, 'artifacts', appId, USERS_COLLECTION, uid, 'stats', 'finance');
         batch.set(financeStatsRef, { balance: 0, income: 0, expense: 0 });
+        
+        // C. Reset Identity Personal (Agar kembali ke default)
+        const identityRef = doc(db, 'artifacts', appId, USERS_COLLECTION, uid, 'personal', 'identity');
+        batch.delete(identityRef); 
 
-        // C. Eksekusi
+        // D. Eksekusi
         await batch.commit();
-        toast.success("Akun berhasil di-reset bersih", { icon: '✨' });
+        toast.success("Akun berhasil di-reset bersih (Level 1)", { icon: '✨' });
     }
 };

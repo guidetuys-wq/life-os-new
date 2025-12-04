@@ -27,6 +27,7 @@ export const viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false, // UX Mobile App feel
+  interactiveWidget: 'resizes-content',
 };
 
 export default function RootLayout({ children }) {

@@ -2,8 +2,10 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { IdentityService } from '@/services/identityService';
+import { AiService } from '@/services/aiService'; // [NEW] Integrasi AI Jurnal
+import toast from 'react-hot-toast';
 
-// Helper: Debounce untuk Auto-save (Mencegah spam write ke DB)
+// Helper: Debounce untuk Auto-save
 const useDebounce = (value, delay) => {
     const [debouncedValue, setDebouncedValue] = useState(value);
     useEffect(() => {
@@ -19,6 +21,7 @@ export default function IdentityDashboard() {
     // Local State untuk input
     const [snapshot, setSnapshot] = useState({ good: '', fix: '', leave: '' });
     const [isLoaded, setIsLoaded] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false); // [NEW] Loading state AI
 
     // 1. Fetch Data
     useEffect(() => {
@@ -38,11 +41,10 @@ export default function IdentityDashboard() {
     }, [user, isLoaded]);
 
     // 2. Auto-Save Logic (Debounced)
-    const debouncedSnapshot = useDebounce(snapshot, 1500); // Tunggu 1.5 detik setelah ketik
+    const debouncedSnapshot = useDebounce(snapshot, 1500);
 
     useEffect(() => {
         if (!user || !isLoaded) return;
-        // Simpan ke DB hanya jika data berubah
         IdentityService.updateIdentity(user.uid, { snapshot: debouncedSnapshot });
     }, [debouncedSnapshot, user, isLoaded]);
 
@@ -50,19 +52,56 @@ export default function IdentityDashboard() {
         setSnapshot(prev => ({ ...prev, [field]: value }));
     };
 
+    // [NEW] Handler Auto Journal (The Scribe)
+    const handleAutoJournal = async () => {
+        if (!snapshot.good && !snapshot.fix) {
+            if(!confirm("Refleksi masih kosong. AI hanya akan menggunakan data sistem (Log). Lanjut?")) return;
+        }
+
+        setIsGenerating(true);
+        const toastId = toast.loading("AI sedang merangkai jurnal hari ini...");
+        
+        try {
+            const result = await AiService.createDailyJournal(user.uid, snapshot);
+            toast.success(result, { id: toastId, icon: '✍️' });
+        } catch (error) {
+            toast.error("Gagal menulis jurnal", { id: toastId });
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
     return (
-        <div className="glass-card p-6 border border-white/5 relative overflow-hidden group">
+        // [FIX] p-4 md:p-6
+        <div className="glass-card p-4 md:p-6 border border-white/5 relative overflow-hidden group">
             {/* Background Glow */}
             <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/5 rounded-full blur-[80px] -z-10 group-hover:bg-purple-500/10 transition-all duration-1000"></div>
 
-            <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20 shadow-lg shadow-purple-900/20">
-                    <span className="material-symbols-rounded text-xl">self_improvement</span>
+            <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20 shadow-lg shadow-purple-900/20">
+                        <span className="material-symbols-rounded text-xl">self_improvement</span>
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-bold text-white tracking-tight">Snapshot Reflection</h3>
+                        <p className="text-xs text-slate-400">Evaluasi harian & Auto-Journal.</p>
+                    </div>
                 </div>
-                <div>
-                    <h3 className="text-lg font-bold text-white tracking-tight">Snapshot Reflection</h3>
-                    <p className="text-xs text-slate-400">Evaluasi harian untuk perkembangan diri.</p>
-                </div>
+
+                {/* [NEW] AI Journal Button */}
+                <button 
+                    onClick={handleAutoJournal}
+                    disabled={isGenerating}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-purple-600 text-slate-300 hover:text-white text-[10px] font-bold transition-all border border-slate-700 hover:border-purple-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Tulis Jurnal Otomatis dari Data Hari Ini"
+                >
+                    {isGenerating ? (
+                        <span className="material-symbols-rounded text-sm animate-spin">sync</span>
+                    ) : (
+                        <span className="material-symbols-rounded text-sm">auto_awesome</span>
+                    )}
+                    <span className="hidden sm:inline">{isGenerating ? 'Menulis...' : 'Wrap-up Day'}</span>
+                </button>
             </div>
 
             <div className="space-y-5">
@@ -70,7 +109,7 @@ export default function IdentityDashboard() {
                     label="Apa yang berjalan baik?" 
                     icon="thumb_up"
                     color="text-emerald-400"
-                    placeholder="Kemenangan kecil, progress task, mood bagus..."
+                    placeholder="Kemenangan kecil..."
                     value={snapshot.good} 
                     onChange={(v) => handleChange('good', v)} 
                 />
@@ -78,7 +117,7 @@ export default function IdentityDashboard() {
                     label="Apa yang perlu diperbaiki?" 
                     icon="build"
                     color="text-amber-400"
-                    placeholder="Distraksi, kurang tidur, prokrastinasi..."
+                    placeholder="Distraksi..."
                     value={snapshot.fix} 
                     onChange={(v) => handleChange('fix', v)} 
                 />
@@ -86,7 +125,7 @@ export default function IdentityDashboard() {
                     label="Apa yang perlu ditinggalkan?" 
                     icon="delete_forever"
                     color="text-rose-400"
-                    placeholder="Kebiasaan buruk, pikiran negatif..."
+                    placeholder="Kebiasaan buruk..."
                     value={snapshot.leave} 
                     onChange={(v) => handleChange('leave', v)} 
                 />

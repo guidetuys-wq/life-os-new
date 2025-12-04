@@ -48,16 +48,23 @@ export const ProjectService = {
         });
     },
 
-    // 4. Pindah Status
+    // 4. Pindah Status (FIXED LOGIC)
     moveProject: async (uid, projectId, newStatus, projectData) => {
         const oldStatus = projectData.status;
         await updateDoc(doc(db, 'artifacts', appId, 'users', uid, COLLECTION, projectId), { 
             status: newStatus 
         });
 
+        // Skenario 1: Project Selesai -> Tambah XP
         if (newStatus === 'done' && oldStatus !== 'done') {
             await addXP(uid, XP_VALUES.PROJECT_DONE, 'PROJECT_DONE', `Project Tuntas: ${projectData.name}`);
             toast.success("Project Selesai! +100 XP", { icon: '🎉' });
+        }
+        
+        // [NEW] Skenario 2: Project Batal Selesai (Undo) -> Tarik XP
+        else if (oldStatus === 'done' && newStatus !== 'done') {
+            await addXP(uid, -XP_VALUES.PROJECT_DONE, 'PROJECT_UNDO', `Undo: ${projectData.name}`);
+            toast("XP Dibatalkan (Project Aktif Kembali)", { icon: 'ue21a' });
         }
     },
 

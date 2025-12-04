@@ -8,6 +8,7 @@ import {
 } from 'firebase/firestore';
 import { FinanceValidator } from '@/lib/validators/finance.validator';
 import toast from 'react-hot-toast';
+import { addXP, XP_VALUES } from '@/lib/gamification'; // [NEW] Import ini
 
 const USERS_COLLECTION = 'users';
 const TRANS_COLLECTION = 'transactions';
@@ -114,7 +115,11 @@ export const FinanceService = {
       // Commit batch
       await batch.commit();
       
-      toast.success('Transaksi dicatat!', { icon: '💰' });
+      // [NEW] Berikan Reward XP
+      // Panggil di luar batch agar tidak memblokir transaksi finansial utama jika gamifikasi error
+      addXP(uid, XP_VALUES.TRANSACTION_LOG, 'FINANCE_LOG', 'Mencatat Transaksi').catch(err => console.error("XP Error", err));
+
+      toast.success('Transaksi dicatat! +2 XP', { icon: '💰' }); // Update pesan
       return newTransRef.id;
       
     } catch (error) {

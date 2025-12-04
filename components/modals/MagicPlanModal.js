@@ -68,11 +68,10 @@ export default function MagicPlanModal({ isOpen, onClose, goal, uid }) {
 
     return (
         <Modal isOpen={isOpen} onClose={onClose}>
-            {/* UI FIX: Gunakan Flex Column penuh agar Header & Footer sticky */}
             <div className="flex flex-col h-full max-h-[85vh]">
                 
-                {/* 1. HEADER (Padding Konsisten) */}
-                <div className="p-6 pb-4 border-b border-white/5 flex justify-between items-start shrink-0">
+                {/* [FIX] p-5 di mobile */}
+                <div className="p-5 md:p-6 pb-4 border-b border-white/5 flex justify-between items-start shrink-0">
                     <div>
                         <h3 className="text-xl font-bold text-white flex items-center gap-2">
                             <span className="material-symbols-rounded text-purple-400">auto_awesome</span> 
@@ -85,8 +84,9 @@ export default function MagicPlanModal({ isOpen, onClose, goal, uid }) {
                     </button>
                 </div>
 
-                {/* 2. SCROLLABLE CONTENT (Padding Konsisten) */}
-                <div className="flex-1 overflow-y-auto custom-scroll p-6 min-h-[200px]">
+                {/* [FIX] p-5 di mobile */}
+                <div className="flex-1 overflow-y-auto custom-scroll p-5 md:p-6 min-h-[200px]">
+                    {/* ... Content ... */}
                     {loading ? (
                         <div className="flex flex-col items-center justify-center py-12 text-slate-500 animate-pulse h-full">
                             <span className="material-symbols-rounded text-4xl mb-3 text-purple-500">psychology</span>
@@ -94,7 +94,8 @@ export default function MagicPlanModal({ isOpen, onClose, goal, uid }) {
                         </div>
                     ) : (
                         <div className="space-y-3">
-                            <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mb-2">
+                            {/* ... Tasks list ... */}
+                             <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mb-2">
                                 Langkah yang disarankan:
                             </p>
                             
@@ -126,21 +127,12 @@ export default function MagicPlanModal({ isOpen, onClose, goal, uid }) {
                     )}
                 </div>
 
-                {/* 3. FOOTER ACTIONS (Padding Konsisten) */}
-                <div className="p-6 pt-4 border-t border-white/5 bg-slate-900/50 shrink-0 flex gap-3 rounded-b-3xl">
-                    <button 
-                        onClick={onClose} 
-                        className="flex-1 py-3.5 rounded-xl bg-slate-800 text-slate-300 font-bold hover:bg-slate-700 transition-colors text-sm"
-                    >
-                        Batal
-                    </button>
-                    <button 
-                        onClick={handleExecute} 
-                        disabled={loading} 
-                        className="flex-[2] py-3.5 rounded-xl bg-purple-600 text-white font-bold hover:bg-purple-500 shadow-lg shadow-purple-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
-                    >
+                {/* [FIX] p-5 di mobile */}
+                <div className="p-5 md:p-6 pt-4 border-t border-white/5 bg-slate-900/50 shrink-0 flex gap-3 rounded-b-3xl">
+                    <button onClick={onClose} className="flex-1 py-3.5 rounded-xl bg-slate-800 text-slate-300 font-bold hover:bg-slate-700 transition-colors text-sm">Batal</button>
+                    <button onClick={handleExecute} disabled={loading} className="flex-[2] py-3.5 rounded-xl bg-purple-600 text-white font-bold hover:bg-purple-500 shadow-lg shadow-purple-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm">
                         <span className="material-symbols-rounded text-lg">rocket_launch</span>
-                        Eksekusi ke Progress
+                        Eksekusi
                     </button>
                 </div>
             </div>

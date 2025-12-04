@@ -2,12 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-/* [TAMBAH] Definisi Class Material Symbols */
+/* ... (Material Symbols class TETAP SAMA) ... */
 .material-symbols-rounded {
   font-family: 'Material Symbols Rounded';
   font-weight: normal;
   font-style: normal;
-  font-size: 24px;  /* Ukuran default */
+  font-size: 24px;
   display: inline-block;
   line-height: 1;
   text-transform: none;
@@ -15,11 +15,8 @@
   word-wrap: normal;
   white-space: nowrap;
   direction: ltr;
-  /* Support for all WebKit browsers. */
   -webkit-font-smoothing: antialiased;
-  /* Support for Safari and Chrome. */
   text-rendering: optimizeLegibility;
-  /* Support for Firefox. */
   -moz-osx-font-smoothing: grayscale;
 }
 
@@ -27,60 +24,58 @@
   --bg-dark: #0f172a;
 }
 
+/* [MOBILE FIRST RESET] */
+html {
+  height: 100%;
+  /* Mencegah efek pegas (rubber-banding) di iOS/Chrome saat scroll mentok */
+  overscroll-behavior: none; 
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   background-color: var(--bg-dark);
   color: #e2e8f0;
   -webkit-tap-highlight-color: transparent;
-  overflow-x: hidden;
+  /* Mencegah user select teks UI (kecuali input) agar terasa seperti aplikasi */
+  -webkit-user-select: none;
+  user-select: none;
+  /* Gestur touch native yang lebih baik */
+  touch-action: pan-x pan-y;
 }
 
-/* [FIX] Turunkan Z-Index Texture Overlay */
-body::before {
-  /* ... content, pos, dll ... */
-  z-index: -1; /* Ganti dari 50 ke -1 agar background ada di BELAKANG konten */
-  /* pointer-events: none; (tetap ada) */
+/* Kembalikan text selection untuk input & area konten panjang */
+input, textarea, .prose, [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
-/* --- PREMIUM TEXTURE OVERLAY --- */
+/* Texture Overlay (Tetap sama) */
 body::before {
   content: "";
   position: fixed;
   top: 0; left: 0; width: 100%; height: 100%;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E");
   pointer-events: none;
-  z-index: 50;
+  z-index: -1;
 }
 
-/* --- UTILITIES --- */
-.glass {
-  @apply bg-slate-900/60 backdrop-blur-xl border border-white/5 shadow-xl;
-}
+/* Utilities Glass (Tetap sama) */
+.glass { @apply bg-slate-900/60 backdrop-blur-xl border border-white/5 shadow-xl; }
+.glass-card { @apply bg-slate-800/30 backdrop-blur-md border border-white/5 rounded-2xl transition-all duration-300; }
+/* Hapus hover effect di mobile agar tidak lengket, kita atur di tailwind config */
+.input-glass { @apply bg-slate-950/50 border border-slate-700/50 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all; }
 
-.glass-card {
-  @apply bg-slate-800/30 backdrop-blur-md border border-white/5 rounded-2xl transition-all duration-300;
-}
-
-.glass-card:hover {
-  @apply bg-slate-800/50 border-white/10 shadow-lg shadow-blue-500/5 transform -translate-y-1;
-}
-
-.input-glass {
-  @apply bg-slate-950/50 border border-slate-700/50 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all;
-}
-
-/* --- SCROLLBAR --- */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; } /* Lebih tipis di mobile */
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { @apply bg-slate-700 rounded-full hover:bg-slate-600; }
+::-webkit-scrollbar-thumb { @apply bg-slate-700/50 rounded-full; }
 
-/* --- ANIMATIONS --- */
+/* Animations (Tetap sama) */
 .animate-enter { animation: enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; transform: translateY(10px); }
 @keyframes enter { to { opacity: 1; transform: translateY(0); } }
-
-/* Stagger Children Animation */
 .stagger-1 { animation-delay: 50ms; }
 .stagger-2 { animation-delay: 100ms; }
 .stagger-3 { animation-delay: 150ms; }
 
-/* --- SAFE AREA --- */
-.safe-pb { padding-bottom: env(safe-area-inset-bottom, 80px); }
+/* Safe Area Bottom (Untuk iPhone tanpa tombol home) */
+.safe-pb { padding-bottom: env(safe-area-inset-bottom, 20px); }

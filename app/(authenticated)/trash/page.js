@@ -8,6 +8,7 @@ export default function TrashPage() {
     const { user } = useAuth();
     const [trashItems, setTrashItems] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [isDeleting, setIsDeleting] = useState(false); // State untuk loading tombol hapus
 
     const loadTrash = async () => {
         if (!user) return;
@@ -28,7 +29,6 @@ export default function TrashPage() {
 
     const handleRestore = async (item) => {
         await TrashService.restoreItem(user.uid, item);
-        // Hapus item dari state lokal agar UI langsung update tanpa fetch ulang
         setTrashItems(prev => prev.filter(i => i.id !== item.id));
     };
 
@@ -39,30 +39,71 @@ export default function TrashPage() {
         }
     };
 
+    // [NEW] Handler Empty Trash
+    const handleEmptyTrash = async () => {
+        if (trashItems.length === 0) return;
+        
+        if (confirm(`PERINGATAN: Anda akan menghapus ${trashItems.length} item secara permanen. Tindakan ini TIDAK BISA dibatalkan. Lanjut?`)) {
+            setIsDeleting(true);
+            try {
+                await TrashService.emptyTrash(user.uid, trashItems);
+                setTrashItems([]); // Kosongkan state lokal
+            } catch (error) {
+                toast.error("Gagal mengosongkan sampah");
+            }
+            setIsDeleting(false);
+        }
+    };
+
     return (
         <div className="p-4 md:p-8 max-w-4xl mx-auto pb-32 animate-enter">
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-                    <span className="material-symbols-rounded text-slate-500">delete</span> Trash
-                </h1>
-                <button 
-                    onClick={loadTrash} 
-                    className="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 transition-colors text-slate-400 hover:text-white"
-                    title="Refresh"
-                >
-                    <span className="material-symbols-rounded">refresh</span>
-                </button>
+            
+            {/* Header dengan Tombol Aksi */}
+            <div className="flex justify-between items-center mb-8">
+                <div>
+                    <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                        <span className="material-symbols-rounded text-slate-500">delete</span> Trash
+                    </h1>
+                    <p className="text-sm text-slate-400 mt-1">Item akan dihapus permanen jika tidak dipulihkan.</p>
+                </div>
+                
+                <div className="flex gap-3">
+                    {/* Tombol Empty Trash (Hanya muncul jika ada sampah) */}
+                    {trashItems.length > 0 && (
+                        <button 
+                            onClick={handleEmptyTrash}
+                            disabled={isDeleting}
+                            className="px-4 py-2 bg-rose-500/10 text-rose-400 hover:bg-rose-600 hover:text-white rounded-xl text-xs font-bold border border-rose-500/20 transition-all flex items-center gap-2 disabled:opacity-50"
+                        >
+                            {isDeleting ? (
+                                <span className="material-symbols-rounded text-sm animate-spin">sync</span>
+                            ) : (
+                                <span className="material-symbols-rounded text-lg">delete_forever</span>
+                            )}
+                            <span className="hidden sm:inline">Empty Trash</span>
+                        </button>
+                    )}
+
+                    <button 
+                        onClick={loadTrash} 
+                        className="p-2 bg-slate-800 rounded-xl hover:bg-slate-700 transition-colors text-slate-400 hover:text-white border border-slate-700"
+                        title="Refresh"
+                    >
+                        <span className="material-symbols-rounded">refresh</span>
+                    </button>
+                </div>
             </div>
             
+            {/* Content List */}
             {loading ? (
                 <div className="text-center py-20 text-slate-500 animate-pulse flex flex-col items-center gap-2">
                     <span className="material-symbols-rounded text-3xl">sync</span>
                     <span className="text-xs font-mono">Memindai tempat sampah...</span>
                 </div>
             ) : trashItems.length === 0 ? (
-                <div className="text-center py-20 border-2 border-dashed border-slate-800 rounded-3xl opacity-50">
+                <div className="text-center py-24 border-2 border-dashed border-slate-800 rounded-3xl opacity-50">
                     <span className="material-symbols-rounded text-6xl text-slate-700 mb-4">delete_sweep</span>
-                    <p className="text-sm text-slate-500">Tempat sampah bersih.</p>
+                    <p className="text-sm text-slate-500 font-medium">Tempat sampah bersih ✨</p>
                 </div>
             ) : (
                 <div className="space-y-3">

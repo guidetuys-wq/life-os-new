@@ -28,8 +28,8 @@ export default function GoalModal({ isOpen, onClose, uid }) {
 
     return (
         <Modal isOpen={isOpen} onClose={onClose}>
-            <div className="p-6">
-                {/* Header Manual */}
+            {/* [FIX] p-5 di mobile, p-6 di desktop */}
+            <div className="p-5 md:p-6">
                 <div className="flex justify-between items-center mb-6">
                     <div>
                         <h3 className="text-xl font-bold text-white">Target Baru</h3>
@@ -39,8 +39,10 @@ export default function GoalModal({ isOpen, onClose, uid }) {
                         <span className="material-symbols-rounded text-xl">close</span>
                     </button>
                 </div>
-
+                
+                {/* ... Form ... */}
                 <form onSubmit={handleSave} className="flex flex-col gap-5">
+                    {/* ... Inputs ... */}
                     <Input 
                         label="Judul Target"
                         placeholder="Cth: Tabungan 100 Juta..." 
@@ -49,12 +51,13 @@ export default function GoalModal({ isOpen, onClose, uid }) {
                         autoFocus
                     />
                     
-                    <div className="grid grid-cols-2 gap-4">
-                        <Select 
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4"> {/* [FIX] Stack di mobile */}
+                         <Select 
                             label="Area Hidup"
                             value={formData.area} 
                             onChange={e => setFormData({...formData, area: e.target.value})}
                         >
+                             {/* ... options ... */}
                             <option value="Career">Career</option>
                             <option value="Finance">Finance</option>
                             <option value="Health">Health</option>
@@ -70,7 +73,7 @@ export default function GoalModal({ isOpen, onClose, uid }) {
                             onChange={e => setFormData({...formData, deadline: e.target.value})}
                         />
                     </div>
-
+                    
                     <button type="submit" disabled={isLoading} className="btn-primary w-full py-3.5 rounded-xl font-bold mt-2 shadow-lg active:scale-95 transition-all flex justify-center items-center gap-2">
                         {isLoading ? <span className="animate-spin material-symbols-rounded">sync</span> : 'Simpan Target'}
                     </button>
