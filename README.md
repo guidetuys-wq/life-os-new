@@ -1,47 +1,95 @@
-# 🧬 Life OS - Personal Control & Clarity
+# 🧬 Life OS — Personal Control & Clarity
 
-**Life OS** adalah aplikasi dasbor produktivitas terpadu yang dirancang untuk membantu Anda mengelola pekerjaan (*Focus Zone*) dan keseimbangan hidup (*Life Zone*) dalam satu tempat. Dibangun dengan teknologi web modern, aplikasi ini menggabungkan manajemen tugas, keuangan, dan catatan dengan elemen **Gamifikasi** dan kecerdasan buatan (**AI**) untuk membuat produktivitas menjadi menyenangkan.
+`Life OS` adalah dasbor produktivitas all-in-one untuk mengelola pekerjaan (Focus Zone) dan keseimbangan hidup (Life Zone). Aplikasi ini memadukan task management, habit tracking, finance, dan note-taking dengan elemen gamifikasi dan integrasi AI.
 
-![Life OS Dashboard Preview](public/window.svg) ## ✨ Fitur Utama
+![Life OS Dashboard Preview](public/window.svg)
 
-### 🎯 Focus & Productivity (Zona Kerja)
-* **Gamification Engine**: Dapatkan **XP** setiap kali menyelesaikan Task, Habit, atau Project. Naik level dan pantau progres Anda layaknya karakter game RPG.
-* **Smart Inbox**: Tangkap ide dengan cepat. Gunakan **AI Refine** untuk mengubah ide mentah menjadi task yang *SMART* (Spesifik & Actionable).
-* **Projects Board (Kanban)**: Kelola proyek dengan tampilan Kanban *Drag & Drop*. Gunakan fitur **Magic Plan** (AI) untuk memecah judul proyek menjadi langkah-langkah konkret secara otomatis.
-* **Focus Timer**: Timer fokus (Pomodoro) yang terintegrasi dengan Task. Timer tetap berjalan di latar belakang meskipun halaman di-refresh (*Persistence*).
-* **Life Goals**: Tetapkan visi jangka panjang dengan progress bar visual.
-
-### 🧘 Life Balance (Zona Hidup)
-* **Finance Manager**: Catat pemasukan dan pengeluaran. Saldo dihitung secara *real-time* dan akurat dengan sistem *Atomic Transactions*.
-* **Second Brain (Notes)**: Simpan catatan dan ide. Fitur **Chat with Brain** memungkinkan Anda bertanya kepada AI tentang isi catatan Anda sendiri (RAG System).
-* **Habit Tracker**: Bangun kebiasaan positif dengan *Heatmap* visual 7 hari terakhir.
-* **Wellness Tracker**: Pantau hidrasi harian dan suasana hati (Mood).
-* **Library**: Manajemen koleksi buku, kursus, dan film.
-
-### 🛡️ System & Security
-* **Secure AI Integration**: Integrasi Mistral AI menggunakan **Server Actions** sehingga API Key aman dan tidak terekspos ke klien.
-* **Trash (Soft Delete)**: Data yang dihapus masuk ke "Tempat Sampah" terlebih dahulu dan bisa dipulihkan (*Restore*).
-* **Optimized Stats**: Perhitungan statistik menggunakan *Firestore Aggregation* untuk performa tinggi dan biaya rendah.
+**Ringkasan singkat**
+- **Fokus**: Task, Projects (Kanban), Focus Timer (Pomodoro)
+- **Hidup**: Finance manager, Habit tracker, Wellness, Notes (Second Brain)
+- **Ekstra**: Gamification (XP/level), AI features (Magic Plan, Chat with Brain)
 
 ---
 
-## 🛠️ Teknologi (Tech Stack)
-
-* **Framework**: [Next.js 14+](https://nextjs.org/) (App Router, Server Actions)
-* **Language**: JavaScript / React
-* **Database & Auth**: [Firebase](https://firebase.google.com/) (Firestore, Authentication)
-* **Styling**: [Tailwind CSS](https://tailwindcss.com/)
-* **AI Model**: [Mistral AI](https://mistral.ai/) (via SDK)
-* **Icons**: Google Material Symbols Rounded
-* **Utilities**: `react-hot-toast` (Notifikasi), `@dnd-kit` (Drag & Drop), `chart.js` (Visualisasi Data).
+**✨ Fitur Utama**
+- **Smart Inbox & AI Refine**: Tangkap ide cepat, gunakan AI untuk mengubah ide menjadi task terstruktur.
+- **Magic Plan (AI)**: Pecah judul proyek menjadi langkah konkret (Server-side AI).
+- **Kanban**: Board drag & drop untuk proyek dan task (`@dnd-kit`).
+- **Focus Timer**: Pomodoro yang terintegrasi dengan task dan persistensi state.
+- **Finance Manager**: Catat transaksi, saldo terakumulasi dengan akurasi.
+- **Second Brain**: Notes + Chat via AI (RAG) untuk meng-query koleksi catatan Anda.
+- **Habit & Wellness**: Pelacakan kebiasaan dan mood.
 
 ---
 
-## 🚀 Cara Menjalankan (Getting Started)
+**🛠️ Teknologi (Tech Stack)**
+- **Framework**: `Next.js` (App Router, Server Actions)
+- **Language**: `JavaScript` / `React`
+- **Database & Auth**: `Firebase` (Firestore, Auth)
+- **Styling**: `Tailwind CSS`
+- **AI**: Mistral AI (dipanggil dari Server Actions / server-side only)
+- **Lib tambahan**: `@dnd-kit`, `react-hot-toast`, `chart.js`
 
-Ikuti langkah ini untuk menjalankan proyek di komputer lokal Anda.
+---
 
-### 1. Clone Repository
-```bash
-git clone [https://github.com/username/life-os.git](https://github.com/username/life-os.git)
-cd life-os
+**Struktur penting proyek** (root)
+- `app/` : Pages (Next.js App Router) dan server actions
+- `components/` : UI & composite components
+- `actions/` : Server-side action helpers (AI planner, second-brain actions)
+- `lib/` : utilitas, `firebase.js`, `db.js`, `confetti.js`, dll.
+- `services/` : business logic per-domain (finance, notes, projects, habits)
+- `public/` : static assets (gambar, ikon)
+
+---
+
+**🚀 Menjalankan secara lokal**
+1. Pasang dependensi:
+```pwsh
+npm install
+```
+2. Siapkan variabel lingkungan. Buat file `.env.local` di root dan tambahkan minimal konfigurasi Firebase dan kunci server AI (contoh):
+```
+NEXT_PUBLIC_FIREBASE_API_KEY=your_firebase_api_key
+FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+FIREBASE_PROJECT_ID=your_project_id
+FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+FIREBASE_MESSAGING_SENDER_ID=...
+FIREBASE_APP_ID=...
+MISTRAL_API_KEY=your_mistral_api_key
+```
+
+> Catatan: `MISTRAL_API_KEY` hanya digunakan server-side via Server Actions; jangan menaruhnya di `NEXT_PUBLIC_`.
+
+3. Jalankan development server:
+```pwsh
+npm run dev
+```
+
+4. Build dan jalankan production:
+```pwsh
+npm run build
+npm run start
+```
+
+---
+
+**File & lokasi penting**
+- **AI / actions**: `actions/` — server-side helpers untuk planner dan second-brain.
+- **Firebase init**: `lib/firebase.js` — konfigurasi SDK dan helper auth.
+- **Database helpers**: `lib/db.js` — fungsi akses Firestore.
+- **Services**: `services/` — domain logic (financeService, noteService, dll.).
+
+---
+
+**Pengembangan & kontribusi**
+- Ikuti pola komponen di `components/` dan `ui/` untuk konsistensi.
+- Letakkan logic server-side sensitif (panggilan AI, kunci) pada server actions atau API routes.
+
+---
+
+Butuh bantuan lebih lanjut? Minta saya untuk:
+- Menambahkan contoh `.env.local` yang lebih lengkap
+- Menambahkan instruksi deploy (Vercel / Firebase Hosting)
+- Memperjelas bagian arsitektur (RAG, gamification, atau sync timer)
+
+Terima kasih telah membuka proyek — siap bantu lanjutan!
